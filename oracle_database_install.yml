@@ -1,0 +1,79 @@
+---
+- name: Add server names passed in to the Playbook
+  hosts: all,localhost
+  gather_facts: no 
+  run_once: true
+  tasks: 
+    - name: Add server names to the Ansible inventory 
+      when: target is defined 
+      add_host: 
+        name: '{{ item }}' 
+        groups: '{{ ansible_inventory_groups|default(omit) }}' 
+      with_items: 
+        - "{{ target.replace(',','\n').split() }}" 
+      changed_when: false 
+
+- name: Database Binary installation Playbook - Tasks
+  hosts: "{{ target }}"
+  tasks:
+    - name: Send Starting Notification
+      include_tasks: notification.yml
+      vars:
+        - call: "start"
+
+    - name: Initialize
+      block:
+        - name: Initialize
+          import_role:
+            name: initialization_role
+      rescue:
+        - name: Checking Initialize Playbook
+          include_tasks: notification.yml
+          vars:
+            - call: "fail"
+        - name: Check if Fail
+          fail: 
+            msg: "Fail"
+    
+    - name: Pre-Cleanup the Oracle Database install
+      include_role:
+        name: oracle_database_install_role
+        tasks_from: clean_files_from_server
+
+    - name: Install the Oracle Database Binaries
+      block:
+        - name: Install the Oracle Database Binaries
+          import_role:
+            name: oracle_database_install_role
+      rescue:
+        - name: Cleanup the Oracle Database install
+          include_role:
+            name: oracle_database_install_role
+            tasks_from: clean_files_from_server
+        - name: Checking Install the Oracle Database Binaries Playbook
+          include_tasks: notification.yml
+          vars:
+            - call: "fail"
+        - name: Check if Fail
+          fail: 
+            msg: "Fail"
+
+    - name: Cleanup the Oracle Database install
+      block:
+        - name: Cleanup the Oracle Database install
+          include_role:
+            name: oracle_database_install_role
+            tasks_from: clean_files_from_server
+      rescue:
+        - name: Checking Cleanup the Oracle Database install Playbook
+          include_tasks: notification.yml
+          vars:
+            - call: "fail"
+        - name: Check if Fail
+          fail: 
+            msg: "Fail"
+
+    - name: Send Success Notification
+      include_tasks: notification.yml
+      vars:
+        - call: "success"

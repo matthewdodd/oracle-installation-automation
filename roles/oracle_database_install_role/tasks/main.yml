@@ -1,0 +1,211 @@
+---
+#tasks file for Oracle Database Installation
+
+- set_fact:
+    ORACLE_SID: "{{ DATABASE_NAME }}"
+    script_permission: 0777
+    server_name: "{{ target }}"
+
+- name: Copy Scripts to {{ remote_script_directory }}
+  block:
+    - name: Create roles/oracle_database_install_role/files if not exist
+      copy: 
+        src: roles/oracle_database_install_role/files/ 
+        dest: "{{ remote_script_directory }}/oracle_database_install_role" 
+        mode: "{{ script_permission }}"
+
+- name: Oracle Database Installation
+  become: yes
+  become_user: "{{ db_owner }}"
+  block:
+    - name: Create the Oracle Home location
+      file:
+        path: "{{ oracle_home }}"
+        mode: "{{ script_permission }}"
+        state: directory
+
+    - name: Download and copy binaries to server
+      include: copy_files_to_server.yml
+      vars:
+        artf_file_name: "{{ install_file_name }}"
+        temp_dir: "{{ install_folder_name }}"
+        patch: "no"
+    
+    - name: Move the Binary file to the installation location
+      copy:
+        src: "{{ install_folder_name }}/{{ install_file_name }}"
+        dest: "{{ oracle_home }}"
+        remote_src: yes
+
+    - name: Extract {{ install_file_name }} into {{ oracle_home }}
+      ansible.builtin.unarchive:
+        remote_src: yes
+        src: "{{ oracle_home }}/{{ install_file_name }}"
+        dest: "{{ oracle_home }}"
+
+    - name: Remove "{{ oracle_home }}/{{ install_file_name }}"
+      file:
+        state: absent
+        path: "{{ oracle_home }}/{{ install_file_name }}"
+      ignore_errors: true
+
+    - name: Correct Permissions on the Oracle Home location
+      file:
+        path: "{{ oracle_home }}"
+        mode: '0755'
+        state: directory
+
+    - name: Check whether pre-requisite packages are installed
+      block:
+        - set_fact:
+            missing_packages: []
+
+        - name: Gather the package facts
+          ansible.builtin.package_facts:
+            manager: rpm
+
+        - name: Check whether pre-requisite packages are installed
+          set_fact:
+            missing_packages: "{{ missing_packages + [ item ] }}"
+          when: 
+            - item not in ansible_facts.packages
+          with_items:
+          - bc
+          - binutils
+          - compat-libcap1
+          - compat-libstdc++-33
+          - elfutils-libelf
+          - elfutils-libelf-devel
+          - fontconfig-devel
+          - glibc
+          - glibc-devel
+          - ksh
+          - libaio
+          - libaio-devel
+          - libX11
+          - libXau
+          - libXi
+          - libXtst
+          - libXrender
+          - libXrender-devel
+          - libgcc
+          - libstdc++
+          - libstdc++-devel
+          - libxcb
+          - make
+          - smartmontools
+          - sysstat
+          - xorg-x11-xauth
+      when:
+        - ansible_distribution == "RedHat"
+
+    - name: Set up /etc/oraInst.loc
+      become: yes
+      become_user: "{{ b_user }}"
+      shell: |
+        > /etc/oraInst.loc
+        instgrp=$(id -g -n {{ db_owner }})
+        echo "inst_group=$instgrp" >> /etc/oraInst.loc
+        echo "inventory_loc={{ mountpoint }}/{{ db_owner }}/oraInventory" >> /etc/oraInst.loc
+        cat /etc/oraInst.loc
+
+    - name: Set up /local/{{ DATABASE_NAME }}.env
+      become: yes
+      become_user: "{{ b_user }}"
+      shell: |     
+        cp {{ remote_script_directory }}/oracle_database_install_role/db_install.env /local/{{ DATABASE_NAME }}.env
+
+        chmod 0755 /local/{{ DATABASE_NAME }}.env
+
+        echo 'ORACLE_HOME=$ORACLE_BASE/product/{{ database_version }}; export ORACLE_HOME' | cat - /local/{{ DATABASE_NAME }}.env > /local/temp && mv /local/temp /local/{{ DATABASE_NAME }}.env
+        echo 'ORACLE_BASE={{ mountpoint }}/{{ db_owner }}; export ORACLE_BASE' | cat - /local/{{ DATABASE_NAME }}.env > /local/temp && mv /local/temp /local/{{ DATABASE_NAME }}.env
+        echo 'ORACLE_SID={{ DATABASE_NAME }}; export ORACLE_SID' | cat - /local/{{ DATABASE_NAME }}.env > /local/temp && mv /local/temp /local/{{ DATABASE_NAME }}.env
+        echo 'ORACLE_HOSTNAME=$(hostname); export ORACLE_HOSTNAME' | cat - /local/{{ DATABASE_NAME }}.env > /local/temp && mv /local/temp /local/{{ DATABASE_NAME }}.env
+        echo '#' | cat - /local/{{ DATABASE_NAME }}.env > /local/temp && mv /local/temp /local/{{ DATABASE_NAME }}.env
+
+        cat /local/{{ DATABASE_NAME }}.env
+    
+    - name: Run the rootpre.sh (AIX)
+      include: rootpre.yml
+      when:
+        - ansible_distribution == "AIX"
+    
+    - name: Install Database Binaries for {{ db_owner }}
+      shell: |
+        {{ remote_script_directory }}/oracle_database_install_role/database_install.bash {{ DATABASE_NAME }} {{ db_owner }} {{ remote_script_directory }} {{ remote_output_directory }} {{ database_version }}
+      async: 4000
+      poll: 0
+      register: shell_output
+
+    - name: "Check on an async task: Install Database Binaries for {{ db_owner }}"
+      async_status:
+        jid: "{{ shell_output.ansible_job_id }}"
+      register: job_result
+      until: job_result.finished
+      retries: 120
+      delay: 30
+
+    - debug:
+        var: job_result.stdout_lines
+      failed_when: job_result.rc != 0
+
+    - name: Run the root.sh script
+      become: yes
+      become_user: "{{ b_user }}"
+      shell: |
+        set timeout 300
+        spawn /usr/local/doit/doit
+
+        expect "*Enter your Selection*"
+        
+        send "1\r"
+
+        expect "*Enter your Selection*"
+
+        send "1\r"
+
+        expect "*Enter the PATH to root.sh*"
+
+        send "{{ oracle_home }}\r"
+
+        expect "*Press ENTER to continue...*"
+
+        send "\r"
+
+        expect "*Enter your Selection*"
+
+        send "x\r"
+
+        exit 0
+      args:
+        executable: /usr/bin/expect
+      register: root_output
+
+    - debug:
+        msg: "{{ root_output }}"
+
+    - name: Download and copy patches to server
+      include: copy_files_to_server.yml
+      vars:
+        artf_file_name: "{{ patch_file_name }}"
+        temp_dir: "{{ install_folder_name }}"
+        patch: "yes"
+
+    - name: Patch Database Binaries for {{ db_owner }}
+      shell: |
+        {{ remote_script_directory }}/oracle_database_install_role/database_patch.bash {{ DATABASE_NAME }} {{ db_owner }} {{ remote_script_directory }} {{ remote_output_directory }} {{ install_folder_name }}
+      async: 4000
+      poll: 0
+      register: shell_output
+
+    - name: "Check on an async task: Patch Database Binaries for {{ db_owner }}"
+      async_status:
+        jid: "{{ shell_output.ansible_job_id }}"
+      register: job_result
+      until: job_result.finished
+      retries: 120
+      delay: 30
+      
+    - debug:
+        var: job_result.stdout_lines
+      failed_when: job_result.rc != 0

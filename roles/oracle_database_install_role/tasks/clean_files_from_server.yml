@@ -1,0 +1,21 @@
+---
+- name: Cleanup install files
+  become: yes
+  become_user: "{{ b_user }}"
+  ansible.builtin.file:
+    path: "{{ install_folder_name }}"
+    state: absent
+
+- name: Remove {{ remote_script_directory }} - ansorapr
+  ansible.builtin.file:
+    path: "{{ remote_script_directory }}"
+    state: absent
+  ignore_errors: yes
+
+- name: Remove {{ remote_script_directory }}
+  become: yes
+  become_user: "{{ db_owner }}"
+  ansible.builtin.file:
+    path: "{{ remote_script_directory }}"
+    state: absent
+  ignore_errors: yes

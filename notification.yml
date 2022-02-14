@@ -1,0 +1,29 @@
+---
+- set_fact:
+    task_runner: "{{ tower_user_name if tower_user_name is defined else 'scheduler' }}"
+    sched_name: "{{ tower_schedule_name if tower_schedule_name is defined else 'manual job' }}"
+    webhook_url: "office.com/webhookURL"
+    notify_state: "{{ 'started' if call == 'start' else ( 'completed' if call == 'success' else 'failed' ) }}"
+    notify_colour: "{{ '13E81D' if call == 'start' else ( '11A8E8' if call == 'success' else 'f21818' ) }}"
+
+- name: Send Installation Card
+  office_365_connector_card:
+    webhook: "{{ webhook_url }}"
+    title: "Job #{{ tower_job_id }} '{{ tower_job_template_name }}'"
+    summary: "Database Binaries for '{{ DATABASE_NAME }}' installation"
+    sections:
+    - title: Database binary installation has {{ notify_state }}
+      facts:
+      - name: "Database"
+        value: "{{ DATABASE_NAME }}" 
+      - name: "Host"
+        value: "{{ target }}" 
+      - name: "URL" 
+        value: "https://ansibletower.domain.com/#/jobs/playbook/{{ tower_job_id }}"
+      - name: "Running User"
+        value: "{{ task_runner }}"
+      - name: "Scheduled Job Name"
+        value: "{{ sched_name }}"
+    color: "{{ notify_colour }}"
+  environment:
+    https_proxy: http://proxy-mwg-http.glb.ca.sunlife:8080

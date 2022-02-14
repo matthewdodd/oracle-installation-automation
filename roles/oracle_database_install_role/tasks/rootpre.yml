@@ -1,0 +1,51 @@
+---
+- name: Initialize the rootpre.sh script
+  become: yes
+  become_user: "{{ db_owner }}"
+  block:
+    - set_fact:
+        root_pre_folder: "{{ oracle_home }}/clone"
+    
+    - name: Copy rootpre.sh to {{ root_pre_folder }}/root.sh
+      copy:
+        src: "{{ root_pre_folder }}/rootpre.sh"
+        dest: "{{ root_pre_folder }}/root.sh"
+        remote_src: yes
+        mode: '0755'
+   
+- name: Run the rootpre.sh script
+  become: yes
+  become_user: "{{ b_user }}"
+  shell: |
+    set timeout 300
+    spawn /usr/local/doit/doit
+
+    expect "*Enter your Selection*"
+    
+    send "1\r"
+
+    expect "*Enter your Selection*"
+
+    send "1\r"
+
+    expect "*Enter the PATH to root.sh*"
+
+    send "{{ root_pre_folder }}\r"
+
+    expect "*Press ENTER to continue...*"
+
+    send "\r"
+
+    expect "*Enter your Selection*"
+
+    send "x\r"
+    
+    exit 0
+  args:
+    executable: /usr/bin/expect
+  environment:
+    ROOTPRE_DIR: "{{ root_pre_folder }}"
+  register: rootpre_output
+
+- debug:
+    msg: "{{ rootpre_output }}"

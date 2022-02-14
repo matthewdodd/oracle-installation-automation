@@ -1,0 +1,32 @@
+---
+- set_fact:
+    remote_script_directory: "/tmp/ora_ansible_scripts_{{ DATABASE_NAME }}"
+    remote_output_directory: "/tmp/oracle_database_install_{{ DATABASE_NAME }}"
+
+- name: Remove {{ remote_script_directory }} if exists
+  block:
+    - name: Remove {{ remote_script_directory }} if exists - ANSORAPR
+      ansible.builtin.file:
+        path: "{{ remote_script_directory }}"
+        state: absent
+  rescue:
+    - name: Remove {{ remote_script_directory }} if exists - {{ db_owner }}
+      become: yes
+      become_user: "{{ db_owner }}"
+      ansible.builtin.file:
+        path: "{{ remote_script_directory }}"
+        state: absent
+
+- name: Remove {{ remote_output_directory }} if exists
+  block:
+    - name: Remove {{ remote_output_directory }} if exists - ANSORAPR
+      ansible.builtin.file:
+        path: "{{ remote_output_directory }}"
+        state: absent
+  rescue:
+    - name: Remove {{ remote_output_directory }} if exists - {{ db_owner }}
+      become: yes
+      become_user: "{{ db_owner }}"
+      ansible.builtin.file:
+        path: "{{ remote_output_directory }}"
+        state: absent
