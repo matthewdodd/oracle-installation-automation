@@ -1,0 +1,52 @@
+---
+- set_fact:
+    memberlist="{{ item }}"
+    groupname="{{GROUP_NAME}}"
+    action="add"
+
+- name: Check if OS type is allowed
+  shell:
+  args:
+    executable: /usr/bin/bash
+    cmd: |
+      ostype=`uname`
+      if [[ $ostype != "AIX" ]] && [[ $ostype != "Linux" ]]
+      then
+        echo "Failed: OS not supported"
+        exit 4
+      else
+        echo "OS = $ostype"
+      fi
+  register: oscheck_result
+  failed_when: oscheck_result.rc == 4
+
+- name: Add member to group
+  shell:
+  args:
+    executable: /usr/bin/bash
+    cmd: |
+      membername={{memberlist}}
+      ostype=`uname`
+      grep {{groupname}}: /etc/group | grep $membername
+        
+      if [ $? -eq 0 ]
+      then
+        echo "Member $membername is already in the {{groupname}} group."
+      elif [ $ostype = 'AIX' ]
+      then
+        echo "add $membername" "{{groupname}}"
+        sudo /usr/bin/chgrpmem -m + "$membername" "{{groupname}}"
+      elif [ $ostype = 'Linux' ]
+      then
+        echo "add $membername" "{{groupname}}"
+        sudo /bin/gpasswd --add "$membername" "{{groupname}}"
+      fi
+      if [ $? -ne 0 ]
+      then
+        echo "Error adding $membername to {{groupname}}"
+        exit 1
+      fi
+  register: action_result
+
+- debug:
+    msg: "{{action_result.stdout_lines}}"

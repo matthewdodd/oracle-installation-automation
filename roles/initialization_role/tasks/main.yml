@@ -1,0 +1,54 @@
+---
+- name: Init Clean
+  block:
+    - name: Init Clean
+      include_tasks: init_clean.yml
+  ignore_errors: yes
+
+- name: Add member to group
+  block:
+    - name: Add member to group
+      include_tasks: group_membership.yml
+      loop:
+        - "{{ db_owner }}"
+      
+- name: Run init
+  become: yes
+  become_user: "{{ db_owner }}"
+  block:
+    - name: Create {{ remote_script_directory }}
+      ansible.builtin.file:
+        path: "{{ remote_script_directory }}"
+        state: directory
+        mode: "{{ script_permission }}"
+
+    - name: Create roles/oracle_database_install_role/files if not exist
+      copy: 
+        src: roles/oracle_database_install_role/files/ 
+        dest: "{{ remote_script_directory }}/oracle_database_install_role"
+        mode: "{{ script_permission }}"
+
+    - name: Create {{ remote_output_directory }}
+      ansible.builtin.file:
+        path: "{{ remote_output_directory }}"
+        state: directory
+        mode: "{{ script_permission }}"
+
+    - set_fact:
+        oracle_home: "{{ mountpoint }}/{{ db_owner }}/product/{{ database_version }}"
+        install_file_name: "{{ 'AIX' if ansible_distribution == 'AIX' else 'LINUX' }}_binaries.tar.gz"
+        patch_file_name: "{{ 'AIX' if ansible_distribution == 'AIX' else 'LINUX' }}_jan{{ (ansible_date_time.year|string)[-2:] }}.tar.gz"
+        artf_ver: "{{ '19.0.0' if database_version == '19.0.0.0' else ( '12.2.0.1' if database_version == '12.2.0.1' else '12.1.0.2' ) }}"
+        patch_folder_prefix: "/local"
+        b_user: "{{ 'becomeUser' }}"
+        
+    - set_fact:
+        artifactory_repo: "https://artifactory.domain.com/artifactory/release/oracledatabase/{{ artf_ver }}"
+        install_folder_name: "{{ patch_folder_prefix }}/software/{{ database_version }}"
+
+- name: Add member to group
+  block:
+    - name: Add member to group
+      include_tasks: group_membership.yml
+      loop:
+        - "{{ b_user }}"

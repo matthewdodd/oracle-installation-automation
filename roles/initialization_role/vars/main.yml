@@ -1,0 +1,5 @@
+---
+GROUP_NAME: ansibleUserGroup
+script_permission: 0777
+remote_script_directory: "/tmp/ora_ansible_scripts_{{ DATABASE_NAME }}"
+remote_output_directory: "/tmp/ora_db_patch_{{ DATABASE_NAME }}"

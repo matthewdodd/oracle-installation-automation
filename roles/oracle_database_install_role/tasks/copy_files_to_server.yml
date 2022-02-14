@@ -1,0 +1,73 @@
+---
+- name: Copy files to server
+  become: yes
+  become_user: "{{ b_user }}"
+  block:
+    - set_fact:
+        download_dir: "{{ temp_dir }}"
+
+    - name: Remove prior {{ download_dir }}
+      file:
+        state: absent
+        path: "{{ download_dir }}/"
+
+    - name: Create {{ download_dir }}
+      ansible.builtin.file:
+        path: "{{ download_dir }}"
+        state: directory
+        mode: '0777'
+
+    - name: Download {{ artf_file_name }} from {{ artifactory_repo }} to {{ download_dir }}
+      ansible.builtin.get_url:
+        url: '{{ artifactory_repo }}/{{ artf_file_name }}'
+        dest: '{{ download_dir }}/{{ artf_file_name }}'
+        validate_certs: no
+        force_basic_auth: yes
+        mode: '0777'
+        tmp_dest: "{{ download_dir }}"
+        use_proxy: no
+
+    - name: Extract all files into {{ download_dir }}
+      ansible.builtin.unarchive:
+        remote_src: yes
+        src: '{{ download_dir }}/{{ artf_file_name }}'
+        dest: '{{ download_dir }}'
+      when: patch == "yes"
+      
+    - name: Remove {{ artf_file_name }}
+      file:
+        state: absent
+        path: '{{ download_dir }}/{{ artf_file_name }}'
+      ignore_errors: true
+      when: patch == "yes"
+
+    - name : Find all files in "{{ download_dir }}"
+      find:
+        paths: "{{ download_dir }}"
+        patterns: '*.zip,*.tar.gz'
+      register: output
+      when: patch == "yes"
+    
+    - name: Extract all files into {{ download_dir }}
+      ansible.builtin.unarchive:
+        remote_src: yes
+        src: "{{ item.path }}"
+        dest: "{{ download_dir }}"
+      with_items: "{{ output.files }}"
+      when: patch == "yes"
+      
+    - name: Remove zipped files
+      file:
+        state: absent
+        path: "{{ item.path }}"
+      with_items: "{{ output.files }}"
+      ignore_errors: true
+      when: patch == "yes"
+
+    - name: Correct Permissions on {{ download_dir }}
+      file:
+        path: "{{ download_dir }}"
+        mode: '0777'
+        state: directory
+        recurse: yes
+      when: patch == "yes"
