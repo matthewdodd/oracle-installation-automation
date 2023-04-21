@@ -26,4 +26,4 @@
         value: "{{ sched_name }}"
     color: "{{ notify_colour }}"
   environment:
-    https_proxy: http://proxy-mwg-http.glb.ca.sunlife:8080
+    https_proxy: http://proxy-url:8080
