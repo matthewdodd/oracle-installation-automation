@@ -63,7 +63,8 @@
           and __oracle_database_install_role_xmode is not match(__oracle_common_re_mode_group_writable))
          or (__oracle_database_install_role_xmode is match(__oracle_common_re_symbolic_mode)
              and __oracle_database_install_role_xmode.split(',') | select('match', __oracle_common_re_symbolic_mode_unsafe) | list | length == 0) }}
-    __oracle_database_install_role_artifacts: "{{ [install_file_name, patch_file_name] | map('trim') | unique | list }}"
+    __oracle_database_install_role_artifacts: >-
+      {{ [oracle_database_install_role_install_file_name, oracle_database_install_role_patch_file_name] | map('trim') | unique | list }}
     __oracle_database_install_role_checksums: "{{ oracle_common_artifact_checksums | default({}, true) }}"
     __oracle_database_install_role_missing_checksum_msg: >-
       no checksum for \1 in oracle_common_artifact_checksums (required: add "\1: sha256:<digest>", or set

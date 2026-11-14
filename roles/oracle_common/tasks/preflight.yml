@@ -11,7 +11,8 @@
   ansible.builtin.set_fact:
     oracle_common_modes:
       script_permission: >-
-        {{ ('%04o' | format(script_permission)) if script_permission is integer else (script_permission | string | trim) }}
+        {{ ('%04o' | format(oracle_common_script_permission)) if oracle_common_script_permission is integer
+           else (oracle_common_script_permission | string | trim) }}
       oracle_common_staging_dir_mode: >-
         {{ ('%04o' | format(oracle_common_staging_dir_mode)) if oracle_common_staging_dir_mode is integer
            else (oracle_common_staging_dir_mode | string | trim) }}
@@ -65,10 +66,12 @@
         msg: "oracle_common_staging_base must be an absolute path without whitespace or shell metacharacters"
       - failed: >-
           {{ __sid_ok and __prefix_ok and __staging_ok and not (
-               (remote_script_directory | string) is match(__oracle_common_re_abs_path)
-               and (remote_output_directory | string) is match(__oracle_common_re_abs_path)
+               (oracle_common_remote_script_directory | string) is match(__oracle_common_re_abs_path)
+               and (oracle_common_remote_output_directory | string) is match(__oracle_common_re_abs_path)
                and (oracle_common_env_file | string) is match(__oracle_common_re_abs_path)) }}
-        msg: "remote_script_directory, remote_output_directory and oracle_common_env_file must be absolute paths without shell metacharacters"
+        msg: >-
+          remote_script_directory, remote_output_directory (oracle_common_remote_*_directory) and oracle_common_env_file
+          must be absolute paths without shell metacharacters
       - failed: "{{ 'script_permission' in __oracle_common_bad_modes }}"
         msg: >-
           script_permission must be an octal mode without group or world write access (e.g. "0750"; 0777 is not allowed;
@@ -97,14 +100,14 @@
         msg: >-
           oracle_common_group_add_command and oracle_common_group_members_command must start with an absolute path
           (e.g. [/bin/gpasswd, --add] and [/usr/bin/getent, group])
-      - failed: "{{ not (b_user | default('') | string) is match(__oracle_common_re_posix_name) }}"
-        msg: "b_user must be a POSIX user name; got '{{ b_user | default('<undefined>') }}'"
+      - failed: "{{ not (oracle_common_privileged_user | default('') | string) is match(__oracle_common_re_posix_name) }}"
+        msg: "oracle_common_privileged_user (alias b_user) must be a POSIX user name; got '{{ oracle_common_privileged_user | default('<undefined>') }}'"
       - failed: >-
           {{ (oracle_common_manage_group_membership | bool)
              and not (oracle_common_group_name | default('') | string) is match(__oracle_common_re_posix_name) }}
         msg: >-
           oracle_common_group_name (or GROUP_NAME) is required while oracle_common_manage_group_membership is true:
-          the OS group db_owner and b_user join; got '{{ oracle_common_group_name | default('<undefined>') }}'
+          the OS group db_owner and the privileged user (b_user) join; got '{{ oracle_common_group_name | default('<undefined>') }}'
       - failed: "{{ (oracle_common_root_script_method | string) not in ['wrapper', 'become'] }}"
         msg: >-
           oracle_common_root_script_method (alias oracle_root_script_method) must be wrapper (the site root wrapper)
@@ -192,7 +195,7 @@
               ~ oracle_common_patch_file_name_fallback
               ~ ' (January bundle of the current year). Pin the patch file name explicitly.')]
             if (oracle_common_patch_file_name | string | length == 0)
-               and (patch_file_name | default(oracle_common_patch_file_name_fallback)) == oracle_common_patch_file_name_fallback
+               and (oracle_database_install_role_patch_file_name | default(oracle_common_patch_file_name_fallback)) == oracle_common_patch_file_name_fallback
             else [])
          + (['oracle_common_artifact_checksum_required is false: artifacts missing from oracle_common_artifact_checksums are not verified.']
             if not (oracle_common_artifact_checksum_required | bool) else [])

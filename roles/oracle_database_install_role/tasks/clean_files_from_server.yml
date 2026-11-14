@@ -1,21 +1,18 @@
 ---
+# Removes this run's staging: the per-database software directory (as the privileged user) and the staged
+# scripts (connection user, then db_owner; see roles/oracle_common/tasks/remove_staging.yml). The installer
+# logs (oracle_common_remote_output_directory) are kept, as on main. Runs before the install, after a failed
+# install and after a successful one.
 - name: Cleanup install files
   become: true
-  become_user: "{{ b_user }}"
+  become_user: "{{ oracle_common_privileged_user }}"
   ansible.builtin.file:
-    path: "{{ install_folder_name }}"
+    path: "{{ oracle_database_install_role_install_folder_name }}"
     state: absent
 
-- name: Remove {{ remote_script_directory }} - ansible
-  ansible.builtin.file:
-    path: "{{ remote_script_directory }}"
-    state: absent
-  ignore_errors: true
-
-- name: Remove {{ remote_script_directory }}
-  become: true
-  become_user: "{{ db_owner }}"
-  ansible.builtin.file:
-    path: "{{ remote_script_directory }}"
-    state: absent
-  ignore_errors: true
+- name: Remove the staged scripts
+  ansible.builtin.include_role:
+    name: oracle_common
+    tasks_from: remove_staging
+  vars:
+    oracle_common_remove_path: "{{ oracle_common_remote_script_directory }}"

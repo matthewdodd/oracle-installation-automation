@@ -9,7 +9,7 @@
     - not (oracle_database_install_role_safety.inventory_pointer_exists | bool)
     - not (oracle_database_install_role_safety.inventory_dir_exists | bool)
   become: true
-  become_user: "{{ b_user }}"
+  become_user: "{{ oracle_common_privileged_user }}"
   ansible.builtin.file:
     path: "{{ oracle_database_install_role_safety.inventory_location }}"
     state: directory
@@ -28,7 +28,7 @@
 - name: Create the central inventory pointer {{ oracle_common_inventory_pointer_file }}
   when: not (oracle_database_install_role_safety.inventory_pointer_exists | bool)
   become: true
-  become_user: "{{ b_user }}"
+  become_user: "{{ oracle_common_privileged_user }}"
   ansible.builtin.copy:
     dest: "{{ oracle_common_inventory_pointer_file }}"
     content: |
@@ -47,7 +47,7 @@
 
 - name: Read {{ oracle_common_inventory_pointer_file }}
   become: true
-  become_user: "{{ b_user }}"
+  become_user: "{{ oracle_common_privileged_user }}"
   ansible.builtin.slurp:
     src: "{{ oracle_common_inventory_pointer_file }}"
   register: oracle_database_install_role_pointer_final

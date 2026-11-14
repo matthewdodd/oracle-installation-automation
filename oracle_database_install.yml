@@ -30,6 +30,9 @@
       vars:
         call: "start"
 
+    # Every stage ends a failure the same way (roles/oracle_common/tasks/failure_report.yml): a failure
+    # notification (best effort, never fatal) and a failed host whose message names the failed task and
+    # its error. The install stage first records the failure, then rolls back and cleans up.
     - name: Initialize
       block:
         # Shared configuration: per-OS variables and validation of every input (roles/oracle_common).
@@ -49,18 +52,27 @@
           ansible.builtin.import_role:
             name: initialization_role
       rescue:
-        - name: Checking Initialize Playbook
-          ansible.builtin.include_tasks: notification.yml
+        - name: Report the failed Initialize stage
+          ansible.builtin.include_role:
+            name: oracle_common
+            tasks_from: failure_report
           vars:
-            call: "fail"
-        - name: Check if Fail
-          ansible.builtin.fail:
-            msg: "Fail"
+            oracle_common_failure_stage: Initialize
 
+    # On main this step was outside any block, so its failure sent no notification.
     - name: Pre-Cleanup the Oracle Database install
-      ansible.builtin.include_role:
-        name: oracle_database_install_role
-        tasks_from: clean_files_from_server
+      block:
+        - name: Pre-Cleanup the Oracle Database install
+          ansible.builtin.include_role:
+            name: oracle_database_install_role
+            tasks_from: clean_files_from_server
+      rescue:
+        - name: Report the failed Pre-Cleanup stage
+          ansible.builtin.include_role:
+            name: oracle_common
+            tasks_from: failure_report
+          vars:
+            oracle_common_failure_stage: Pre-Cleanup
 
     - name: Install the Oracle Database Binaries
       block:
@@ -68,6 +80,14 @@
           ansible.builtin.import_role:
             name: oracle_database_install_role
       rescue:
+        # Recorded first: the rollback and cleanup below have rescues of their own that would replace
+        # ansible_failed_task / ansible_failed_result.
+        - name: Record the failed Install stage
+          ansible.builtin.include_role:
+            name: oracle_common
+            tasks_from: failure_record
+          vars:
+            oracle_common_failure_stage: Install
         # Removes only what this run created (ORACLE_HOME, <DB>.env, central inventory); never pre-existing ones.
         - name: Roll back the failed Oracle Database install
           ansible.builtin.include_role:
@@ -77,13 +97,12 @@
           ansible.builtin.include_role:
             name: oracle_database_install_role
             tasks_from: clean_files_from_server
-        - name: Checking Install the Oracle Database Binaries Playbook
-          ansible.builtin.include_tasks: notification.yml
+        - name: Report the failed Install stage
+          ansible.builtin.include_role:
+            name: oracle_common
+            tasks_from: failure_report
           vars:
-            call: "fail"
-        - name: Check if Fail
-          ansible.builtin.fail:
-            msg: "Fail"
+            oracle_common_failure_stage: Install
 
     - name: Cleanup the Oracle Database install
       block:
@@ -92,13 +111,12 @@
             name: oracle_database_install_role
             tasks_from: clean_files_from_server
       rescue:
-        - name: Checking Cleanup the Oracle Database install Playbook
-          ansible.builtin.include_tasks: notification.yml
+        - name: Report the failed Cleanup stage
+          ansible.builtin.include_role:
+            name: oracle_common
+            tasks_from: failure_report
           vars:
-            call: "fail"
-        - name: Check if Fail
-          ansible.builtin.fail:
-            msg: "Fail"
+            oracle_common_failure_stage: Cleanup
 
     - name: Send Success Notification
       ansible.builtin.include_tasks: notification.yml

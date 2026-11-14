@@ -10,24 +10,32 @@
 
 # Copied as db_owner: on main the effective copy was the db_owner one in initialization_role
 # (the later connection-user copy was a no-op), so the staged scripts stay owned by db_owner.
-- name: Copy Scripts to {{ remote_script_directory }}
+- name: Copy the role scripts to the staging directory
   become: true
   become_user: "{{ db_owner }}"
-  block:
-    - name: Copy role scripts to {{ remote_script_directory }}/oracle_database_install_role
-      ansible.builtin.copy:
-        src: "{{ role_path }}/files/"
-        dest: "{{ remote_script_directory }}/oracle_database_install_role"
-        mode: "{{ oracle_common_modes.script_permission }}"
-        directory_mode: "{{ oracle_common_modes.oracle_common_staging_dir_mode }}"
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/"
+    dest: "{{ oracle_common_remote_script_directory }}/oracle_database_install_role"
+    mode: "{{ oracle_common_modes.script_permission }}"
+    directory_mode: "{{ oracle_common_modes.oracle_common_staging_dir_mode }}"
+
+# Check mode stops here: every later step needs the downloaded artifacts, which check mode does not fetch.
+# The checks above (inputs, host safety, prerequisites, staging) have all run.
+- name: Report what check mode skips
+  when: ansible_check_mode
+  ansible.builtin.debug:
+    msg: >-
+      Check mode: download, extraction into {{ oracle_database_install_role_oracle_home }}, central inventory,
+      environment file, root scripts, installer and patch run are skipped (they need the downloaded artifacts).
 
 - name: Oracle Database Installation
+  when: not ansible_check_mode
   become: true
   become_user: "{{ db_owner }}"
   block:
     - name: Create the Oracle Home location
       ansible.builtin.file:
-        path: "{{ oracle_home }}"
+        path: "{{ oracle_database_install_role_oracle_home }}"
         mode: "{{ oracle_database_install_role_modes.home_mode }}"
         state: directory
 
@@ -40,35 +48,24 @@
                'home': oracle_database_install_role_safety.home_state == 'absent',
                'home_contents': oracle_database_install_role_safety.home_state == 'empty'}) }}
 
-    - name: Download and copy binaries to server
+    - name: Download the binaries
       ansible.builtin.include_tasks: copy_files_to_server.yml
       vars:
-        artf_file_name: "{{ install_file_name }}"
-        temp_dir: "{{ install_folder_name }}"
-        patch: "no"
-    
-    - name: Move the Binary file to the installation location
-      copy:
-        src: "{{ install_folder_name }}/{{ install_file_name }}"
-        dest: "{{ oracle_home }}"
-        remote_src: true
-        mode: "{{ oracle_database_install_role_modes.download_file_mode }}"
+        __oracle_database_install_role_artifact: "{{ oracle_database_install_role_install_file_name }}"
+        __oracle_database_install_role_download_dir: "{{ oracle_database_install_role_install_folder_name }}"
+        __oracle_database_install_role_extract: false
 
-    - name: Extract {{ install_file_name }} into {{ oracle_home }}
+    # Extracted straight from the staging directory. The original first copied the archive into the
+    # ORACLE_HOME, extracted it there and then deleted the copy; the resulting home is the same.
+    - name: Extract the binaries into the Oracle Home
       ansible.builtin.unarchive:
         remote_src: true
-        src: "{{ oracle_home }}/{{ install_file_name }}"
-        dest: "{{ oracle_home }}"
-
-    - name: Remove "{{ oracle_home }}/{{ install_file_name }}"
-      file:
-        state: absent
-        path: "{{ oracle_home }}/{{ install_file_name }}"
-      ignore_errors: true
+        src: "{{ oracle_database_install_role_install_folder_name }}/{{ oracle_database_install_role_install_file_name }}"
+        dest: "{{ oracle_database_install_role_oracle_home }}"
 
     - name: Correct Permissions on the Oracle Home location
       ansible.builtin.file:
-        path: "{{ oracle_home }}"
+        path: "{{ oracle_database_install_role_oracle_home }}"
         mode: "{{ oracle_database_install_role_modes.home_mode }}"
         state: directory
 
@@ -79,7 +76,7 @@
     - name: Set up the central inventory
       ansible.builtin.include_tasks: inventory.yml
 
-    - name: Set up {{ oracle_common_env_file }}
+    - name: Set up the environment file
       ansible.builtin.include_tasks: env_file.yml
 
     - name: Run the rootpre.sh (AIX)
@@ -87,16 +84,17 @@
       when:
         - oracle_common_run_rootpre | bool
 
-    # Argument vector, no shell: every value reaches the script as one literal argument.
+    # Argument vector, no shell: every value reaches the script as one literal argument. It runs in the
+    # background for at most oracle_database_install_role_install_timeout seconds.
     - name: Install Database Binaries for {{ db_owner }}
       ansible.builtin.command:
         argv:
           - "{{ oracle_common_bash_path }}"
-          - "{{ remote_script_directory }}/oracle_database_install_role/database_install.bash"
+          - "{{ oracle_common_remote_script_directory }}/oracle_database_install_role/database_install.bash"
           - "{{ DATABASE_NAME }}"
           - "{{ db_owner }}"
-          - "{{ remote_script_directory }}"
-          - "{{ remote_output_directory }}"
+          - "{{ oracle_common_remote_script_directory }}"
+          - "{{ oracle_common_remote_output_directory }}"
           - "{{ database_version }}"
           - "{{ oracle_common_env_file }}"
       # Inputs of database_install.bash (documented at the top of the script). Empty values keep the
@@ -111,60 +109,83 @@
         ORACLE_OS_GROUP: "{{ oracle_database_install_role_os_group }}"
         ORACLE_RESPONSE_FILE: "{{ oracle_database_install_role_response_file }}"
         ORACLE_RESPONSE_EXTRA_FILE: "{{ oracle_database_install_role_response_extra_file }}"
-      async: 4000
+      async: "{{ oracle_database_install_role_install_timeout | int }}"
       poll: 0
-      register: shell_output
+      register: oracle_database_install_role_install_job
+      changed_when: true
 
-    - name: "Check on an async task: Install Database Binaries for {{ db_owner }}"
-      async_status:
-        jid: "{{ shell_output.ansible_job_id }}"
-      register: job_result
-      until: job_result.finished
-      retries: 120
-      delay: 30
+    # The job's own failure is reported by the check below (after the output is shown); only running past
+    # the poll window fails this task. The window covers the whole async limit plus one interval.
+    - name: Wait for the installer to finish
+      ansible.builtin.async_status:
+        jid: "{{ oracle_database_install_role_install_job.ansible_job_id }}"
+      register: oracle_database_install_role_install_result
+      until: oracle_database_install_role_install_result.finished | bool
+      retries: "{{ __oracle_database_install_role_install_retries }}"
+      delay: "{{ oracle_database_install_role_poll_interval | int }}"
+      failed_when: false
+      changed_when: false
+      vars:
+        __oracle_database_install_role_install_retries: >-
+          {{ ((oracle_database_install_role_install_timeout | int) / (oracle_database_install_role_poll_interval | int))
+             | round(0, 'ceil') | int + 1 }}
 
-    - debug:
-        var: job_result.stdout_lines
-      failed_when: job_result.rc != 0
+    - name: Check the installer result
+      ansible.builtin.include_tasks: script_result.yml
+      vars:
+        __oracle_database_install_role_script_label: database_install.bash (runInstaller)
+        __oracle_database_install_role_script_result: "{{ oracle_database_install_role_install_result }}"
+        __oracle_database_install_role_script_status_file: "{{ oracle_common_remote_output_directory }}/install_status.txt"
 
     # root.sh through the site root wrapper (default) or directly through become; fails unless it succeeded.
-    - name: Run root.sh in {{ oracle_home }}
+    - name: Run root.sh in the Oracle Home
       ansible.builtin.include_tasks: root_script.yml
       vars:
-        __oracle_database_install_role_root_script_dir: "{{ oracle_home }}"
+        __oracle_database_install_role_root_script_dir: "{{ oracle_database_install_role_oracle_home }}"
         __oracle_database_install_role_root_script_name: root.sh
         __oracle_database_install_role_root_script_success_regex: "{{ oracle_common_root_sh_success_regex }}"
 
-    - name: Download and copy patches to server
+    - name: Download and extract the patches
       ansible.builtin.include_tasks: copy_files_to_server.yml
       vars:
-        artf_file_name: "{{ patch_file_name }}"
-        temp_dir: "{{ install_folder_name }}"
-        patch: "yes"
+        __oracle_database_install_role_artifact: "{{ oracle_database_install_role_patch_file_name }}"
+        __oracle_database_install_role_download_dir: "{{ oracle_database_install_role_install_folder_name }}"
+        __oracle_database_install_role_extract: true
 
     - name: Patch Database Binaries for {{ db_owner }}
       ansible.builtin.command:
         argv:
           - "{{ oracle_common_bash_path }}"
-          - "{{ remote_script_directory }}/oracle_database_install_role/database_patch.bash"
+          - "{{ oracle_common_remote_script_directory }}/oracle_database_install_role/database_patch.bash"
           - "{{ DATABASE_NAME }}"
           - "{{ db_owner }}"
-          - "{{ remote_script_directory }}"
-          - "{{ remote_output_directory }}"
-          - "{{ install_folder_name }}"
+          - "{{ oracle_common_remote_script_directory }}"
+          - "{{ oracle_common_remote_output_directory }}"
+          - "{{ oracle_database_install_role_install_folder_name }}"
           - "{{ oracle_common_env_file }}"
-      async: 4000
+      async: "{{ oracle_database_install_role_patch_timeout | int }}"
       poll: 0
-      register: shell_output
+      register: oracle_database_install_role_patch_job
+      changed_when: true
 
-    - name: "Check on an async task: Patch Database Binaries for {{ db_owner }}"
-      async_status:
-        jid: "{{ shell_output.ansible_job_id }}"
-      register: job_result
-      until: job_result.finished
-      retries: 120
-      delay: 30
-      
-    - debug:
-        var: job_result.stdout_lines
-      failed_when: job_result.rc != 0
+    - name: Wait for the patch run to finish
+      ansible.builtin.async_status:
+        jid: "{{ oracle_database_install_role_patch_job.ansible_job_id }}"
+      register: oracle_database_install_role_patch_result
+      until: oracle_database_install_role_patch_result.finished | bool
+      retries: "{{ __oracle_database_install_role_patch_retries }}"
+      delay: "{{ oracle_database_install_role_poll_interval | int }}"
+      failed_when: false
+      changed_when: false
+      vars:
+        __oracle_database_install_role_patch_retries: >-
+          {{ ((oracle_database_install_role_patch_timeout | int) / (oracle_database_install_role_poll_interval | int))
+             | round(0, 'ceil') | int + 1 }}
+
+    - name: Check the patch result
+      ansible.builtin.include_tasks: script_result.yml
+      vars:
+        __oracle_database_install_role_script_label: database_patch.bash (OPatch)
+        __oracle_database_install_role_script_result: "{{ oracle_database_install_role_patch_result }}"
+        __oracle_database_install_role_script_status_file: >-
+          {{ oracle_common_remote_output_directory }}/opatch_status.txt, {{ oracle_common_remote_output_directory }}/opatch_jvm_status.txt

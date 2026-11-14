@@ -9,12 +9,15 @@
 oracle_database_install_role_oracle_base: "{{ mountpoint }}/{{ db_owner }}"
 # ORACLE_HOME. The default keeps the original layout <mountpoint>/<db_owner>/product/<database_version>.
 # Set a different path for a side-by-side install of a release that is already installed on the
-# host, e.g. /u01/oracle/product/19.0.0.0_2.
-oracle_home: "{{ oracle_database_install_role_oracle_base }}/product/{{ database_version }}"
-patch_folder_prefix: "{{ oracle_common_site_prefix }}"
-# Per-database software staging directory. Cleanup removes only this directory, so runs for other
-# databases (even of the same release) never lose their files.
-install_folder_name: "{{ patch_folder_prefix }}/software/{{ DATABASE_NAME }}_{{ database_version }}"
+# host, e.g. /u01/oracle/product/19.0.0.0_2. The original name oracle_home is accepted as an alias.
+oracle_database_install_role_oracle_home: >-
+  {{ oracle_home | default(oracle_database_install_role_oracle_base ~ '/product/' ~ database_version) }}
+# Base of the software staging directory (alias patch_folder_prefix).
+oracle_database_install_role_patch_folder_prefix: "{{ patch_folder_prefix | default(oracle_common_site_prefix) }}"
+# Per-database software staging directory (alias install_folder_name). Cleanup removes only this
+# directory, so runs for other databases (even of the same release) never lose their files.
+oracle_database_install_role_install_folder_name: >-
+  {{ install_folder_name | default(oracle_database_install_role_patch_folder_prefix ~ '/software/' ~ DATABASE_NAME ~ '_' ~ database_version) }}
 
 # --- Production-host safety (clean target or side-by-side next to existing Oracle software) ---
 # An existing, non-empty ORACLE_HOME is never installed over unless this is true. The short
@@ -80,12 +83,28 @@ oracle_database_install_role_extracted_mode: "u+rwX,g+rX,g-w,o-rwx"
 # AIX: mode of <ORACLE_HOME>/clone/root.sh, the copy of rootpre.sh the root wrapper runs (original 0755).
 oracle_database_install_role_root_script_mode: "0755"
 
+# --- Long-running steps (installer and patch run) -------------------------------------------
+# Hard limit in seconds for database_install.bash (runInstaller) and database_patch.bash (OPatch); the
+# step is stopped and fails when it runs longer (the original used async 4000 for both). The status is
+# checked every oracle_database_install_role_poll_interval seconds (original 30) for the whole limit plus
+# one interval, so polling never gives up while the step may still be running (the original stopped
+# polling after 120 x 30 = 3600 s, before the 4000 s limit).
+oracle_database_install_role_install_timeout: 4000
+oracle_database_install_role_patch_timeout: 4000
+oracle_database_install_role_poll_interval: 30
+
 # Artifact repository: <oracle_common_artifactory_url>/<artf_ver>/<file>.
 # database_version is validated against oracle_common_artifactory_version_map (no fallback).
-artf_ver: "{{ oracle_common_artifactory_version_map[database_version] }}"
-artifactory_repo: "{{ oracle_common_artifactory_url | regex_replace('/+$', '') }}/{{ artf_ver }}"
-install_file_name: "{{ oracle_common_artifact_platform }}_binaries.tar.gz"
+# The original names artf_ver, artifactory_repo, install_file_name and patch_file_name are accepted as aliases.
+oracle_database_install_role_artf_ver: >-
+  {{ artf_ver if artf_ver is defined else oracle_common_artifactory_version_map[database_version] }}
+oracle_database_install_role_artifactory_repo: >-
+  {{ artifactory_repo if artifactory_repo is defined
+     else (oracle_common_artifactory_url | regex_replace('/+$', '')) ~ '/' ~ oracle_database_install_role_artf_ver }}
+oracle_database_install_role_install_file_name: >-
+  {{ install_file_name | default(oracle_common_artifact_platform ~ '_binaries.tar.gz') }}
 # Pinned with oracle_common_patch_file_name; the date-derived name is only a documented fallback.
-patch_file_name: >-
-  {{ oracle_common_patch_file_name if oracle_common_patch_file_name | length > 0
-     else oracle_common_patch_file_name_fallback }}
+oracle_database_install_role_patch_file_name: >-
+  {{ patch_file_name if patch_file_name is defined
+     else (oracle_common_patch_file_name if oracle_common_patch_file_name | length > 0
+           else oracle_common_patch_file_name_fallback) }}

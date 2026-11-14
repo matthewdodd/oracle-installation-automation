@@ -17,12 +17,12 @@
     quiet: true
   vars:
     __oracle_database_install_role_path_checks:
-      - name: oracle_home
-        value: "{{ oracle_home }}"
+      - name: oracle_database_install_role_oracle_home
+        value: "{{ oracle_database_install_role_oracle_home }}"
       - name: oracle_database_install_role_oracle_base
         value: "{{ oracle_database_install_role_oracle_base }}"
-      - name: install_folder_name
-        value: "{{ install_folder_name }}"
+      - name: oracle_database_install_role_install_folder_name
+        value: "{{ oracle_database_install_role_install_folder_name }}"
       - name: oracle_database_install_role_new_inventory_location
         value: "{{ oracle_database_install_role_new_inventory_location }}"
       - name: oracle_common_inventory_pointer_file
@@ -46,8 +46,9 @@
          + (['oracle_database_install_role_inventory_group must be a POSIX group name, or empty']
             if (oracle_database_install_role_inventory_group | default('', true) | length > 0)
                and not (oracle_database_install_role_inventory_group is match(__oracle_common_re_posix_name)) else [])
-         + (['oracle_home must not be inside install_folder_name, which cleanup removes']
-            if ((oracle_home | string) ~ '/').startswith((install_folder_name | string) ~ '/') else []) }}
+         + (['oracle_database_install_role_oracle_home must not be inside oracle_database_install_role_install_folder_name, which cleanup removes']
+            if ((oracle_database_install_role_oracle_home | string) ~ '/')
+                 .startswith((oracle_database_install_role_install_folder_name | string) ~ '/') else []) }}
 
 # Values passed to database_install.bash through its environment (it also rejects line breaks itself).
 - name: Validate the installer inputs
@@ -73,7 +74,15 @@
                and not ((oracle_database_install_role_response_extra_file | string) is match(__oracle_common_re_abs_path)
                         and (oracle_database_install_role_response_extra_file | string) is not search('/\.\.(/|\Z)')) else [])
          + (['oracle_database_install_role_ignore_prereqs (alias oracle_ignore_prereqs) must be true or false']
-            if (oracle_database_install_role_ignore_prereqs | string | lower) not in ['true', 'false', 'yes', 'no', '1', '0'] else []) }}
+            if (oracle_database_install_role_ignore_prereqs | string | lower) not in ['true', 'false', 'yes', 'no', '1', '0'] else [])
+         + (['oracle_database_install_role_install_timeout, oracle_database_install_role_patch_timeout and'
+             ~ ' oracle_database_install_role_poll_interval must be positive whole numbers of seconds']
+            if (__oracle_database_install_role_timings | map('string') | map('trim') | reject('match', __oracle_common_re_uint) | list | length > 0)
+               or (__oracle_database_install_role_timings | map('int') | select('le', 0) | list | length > 0) else []) }}
+    __oracle_database_install_role_timings:
+      - "{{ oracle_database_install_role_install_timeout }}"
+      - "{{ oracle_database_install_role_patch_timeout }}"
+      - "{{ oracle_database_install_role_poll_interval }}"
 
 # Permission modes (normalised, no group/world write) and artifact checksums.
 - name: Validate the permission and download integrity inputs
@@ -89,26 +98,26 @@
       env_file: false
 
 # --- ORACLE_HOME --------------------------------------------------------------------------
-- name: Inspect the ORACLE_HOME {{ oracle_home }}
+- name: Inspect the ORACLE_HOME {{ oracle_database_install_role_oracle_home }}
   become: true
-  become_user: "{{ b_user }}"
+  become_user: "{{ oracle_common_privileged_user }}"
   ansible.builtin.stat:
-    path: "{{ oracle_home }}"
+    path: "{{ oracle_database_install_role_oracle_home }}"
     get_checksum: false
   register: oracle_database_install_role_home_stat
 
 - name: Fail when the ORACLE_HOME path is not a directory
   ansible.builtin.assert:
     that: not oracle_database_install_role_home_stat.stat.exists or oracle_database_install_role_home_stat.stat.isdir
-    fail_msg: "ORACLE_HOME {{ oracle_home }} exists but is not a directory; refusing to use it."
+    fail_msg: "ORACLE_HOME {{ oracle_database_install_role_oracle_home }} exists but is not a directory; refusing to use it."
     quiet: true
 
 - name: List the content of the existing ORACLE_HOME
   when: oracle_database_install_role_home_stat.stat.exists
   become: true
-  become_user: "{{ b_user }}"
+  become_user: "{{ oracle_common_privileged_user }}"
   ansible.builtin.find:
-    paths: "{{ oracle_home }}"
+    paths: "{{ oracle_database_install_role_oracle_home }}"
     file_type: any
     hidden: true
     recurse: false
@@ -121,11 +130,12 @@
       or (oracle_database_install_role_home_content.matched | default(0) | int) == 0
       or (oracle_database_install_role_force_reinstall | bool)
     fail_msg: >-
-      ORACLE_HOME {{ oracle_home }} already exists and is not empty
+      ORACLE_HOME {{ oracle_database_install_role_oracle_home }} already exists and is not empty
       ({{ oracle_database_install_role_home_content.matched | default(0) }} entries, e.g.
       {{ (oracle_database_install_role_home_content.files | default([]) | map(attribute='path') | map('basename') | list)[:5] | join(', ') }}).
       It may belong to a running Oracle installation, so nothing was changed.
-      For a side-by-side install set oracle_home to a new path (e.g. {{ oracle_home }}_2);
+      For a side-by-side install set oracle_home (alias of oracle_database_install_role_oracle_home) to a new path
+      (e.g. {{ oracle_database_install_role_oracle_home }}_2);
       to deliberately install over this home set oracle_database_install_role_force_reinstall=true
       (alias oracle_force_reinstall).
     quiet: true
@@ -137,12 +147,12 @@
   ansible.builtin.debug:
     msg: >-
       WARNING: oracle_database_install_role_force_reinstall is set; the binaries will be extracted over the existing,
-      non-empty ORACLE_HOME {{ oracle_home }}. It will not be removed if the install fails.
+      non-empty ORACLE_HOME {{ oracle_database_install_role_oracle_home }}. It will not be removed if the install fails.
 
 # --- Central inventory --------------------------------------------------------------------
 - name: Inspect the central inventory pointer {{ oracle_common_inventory_pointer_file }}
   become: true
-  become_user: "{{ b_user }}"
+  become_user: "{{ oracle_common_privileged_user }}"
   ansible.builtin.stat:
     path: "{{ oracle_common_inventory_pointer_file }}"
     get_checksum: false
@@ -151,7 +161,7 @@
 - name: Read the existing central inventory pointer
   when: oracle_database_install_role_pointer_stat.stat.exists
   become: true
-  become_user: "{{ b_user }}"
+  become_user: "{{ oracle_common_privileged_user }}"
   ansible.builtin.slurp:
     src: "{{ oracle_common_inventory_pointer_file }}"
   register: oracle_database_install_role_pointer_content
@@ -189,7 +199,7 @@
            if oracle_database_install_role_pointer_stat.stat.exists
            else (oracle_database_install_role_inventory_group | default('', true) or oracle_database_install_role_owner_primary_group.stdout | trim) }}
       owner_groups: "{{ oracle_database_install_role_owner_groups.stdout.split() }}"
-      # Group of the staged software (install_folder_name) together with owner db_owner.
+      # Group of the staged software (oracle_database_install_role_install_folder_name) together with owner db_owner.
       owner_group: "{{ oracle_database_install_role_owner_primary_group.stdout | trim }}"
   vars:
     __oracle_database_install_role_pointer_text: >-
@@ -238,7 +248,7 @@
 
 - name: Inspect the central inventory directory
   become: true
-  become_user: "{{ b_user }}"
+  become_user: "{{ oracle_common_privileged_user }}"
   ansible.builtin.stat:
     path: "{{ oracle_database_install_role_safety.inventory_location }}"
     get_checksum: false
@@ -247,7 +257,7 @@
 # --- Environment file ---------------------------------------------------------------------
 - name: Inspect the environment file {{ oracle_common_env_file }}
   become: true
-  become_user: "{{ b_user }}"
+  become_user: "{{ oracle_common_privileged_user }}"
   ansible.builtin.stat:
     path: "{{ oracle_common_env_file }}"
     get_checksum: false
@@ -255,7 +265,7 @@
 
 - name: Check the directory of the environment file exists
   become: true
-  become_user: "{{ b_user }}"
+  become_user: "{{ oracle_common_privileged_user }}"
   ansible.builtin.stat:
     path: "{{ oracle_common_env_file | dirname }}"
     get_checksum: false
@@ -274,7 +284,7 @@
 - name: Read the existing environment file
   when: oracle_database_install_role_env_stat.stat.exists
   become: true
-  become_user: "{{ b_user }}"
+  become_user: "{{ oracle_common_privileged_user }}"
   ansible.builtin.slurp:
     src: "{{ oracle_common_env_file }}"
   register: oracle_database_install_role_env_existing
@@ -304,7 +314,7 @@
   ansible.builtin.debug:
     msg:
       - "Flow: {{ oracle_database_install_role_safety.flow }}"
-      - "ORACLE_HOME {{ oracle_home }}: {{ oracle_database_install_role_safety.home_state }}"
+      - "ORACLE_HOME {{ oracle_database_install_role_oracle_home }}: {{ oracle_database_install_role_safety.home_state }}"
       - >-
         Central inventory {{ oracle_database_install_role_safety.inventory_location }} (inst_group
         {{ oracle_database_install_role_safety.inventory_group }}):

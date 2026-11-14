@@ -14,7 +14,7 @@
     - oracle_database_install_role_rollback_on_failure | bool
     - (oracle_database_install_role_created | default({})) | dict2items | selectattr('value') | list | length > 0
   become: true
-  become_user: "{{ b_user }}"
+  become_user: "{{ oracle_common_privileged_user }}"
   vars:
     __oracle_database_install_role_owns_home: >-
       {{ (oracle_database_install_role_created.home | default(false)) or (oracle_database_install_role_created.home_contents | default(false)) }}
@@ -32,7 +32,7 @@
         - __oracle_database_install_role_owns_home | bool
         - not (oracle_database_install_role_created.inventory_dir | default(false))
       ansible.builtin.command:
-        argv: [grep, -F, -q, -e, 'LOC="{{ oracle_home }}"', "{{ __oracle_database_install_role_inventory_xml }}"]
+        argv: [grep, -F, -q, -e, 'LOC="{{ oracle_database_install_role_oracle_home }}"', "{{ __oracle_database_install_role_inventory_xml }}"]
       register: oracle_database_install_role_home_registered
       changed_when: false
       check_mode: false
@@ -41,7 +41,7 @@
     - name: Look for the installer that can detach the failed home
       when: (oracle_database_install_role_home_registered.rc | default(1)) == 0
       ansible.builtin.stat:
-        path: "{{ oracle_home }}/oui/bin/runInstaller"
+        path: "{{ oracle_database_install_role_oracle_home }}/oui/bin/runInstaller"
         get_checksum: false
       register: oracle_database_install_role_detach_tool
 
@@ -53,11 +53,11 @@
       become_user: "{{ db_owner }}"
       ansible.builtin.command:
         argv:
-          - "{{ oracle_home }}/oui/bin/runInstaller"
+          - "{{ oracle_database_install_role_oracle_home }}/oui/bin/runInstaller"
           - -silent
           - -waitforcompletion
           - -detachHome
-          - ORACLE_HOME={{ oracle_home }}
+          - ORACLE_HOME={{ oracle_database_install_role_oracle_home }}
       register: oracle_database_install_role_detach
       changed_when: oracle_database_install_role_detach.rc == 0
       failed_when: false
@@ -75,8 +75,9 @@
         - not (oracle_database_install_role_home_removable | bool)
       ansible.builtin.debug:
         msg: >-
-          WARNING: {{ oracle_home }} is registered in the central inventory {{ oracle_database_install_role_safety.inventory_location }}
-          and could not be detached, so it was kept. Detach it (runInstaller -detachHome ORACLE_HOME={{ oracle_home }})
+          WARNING: {{ oracle_database_install_role_oracle_home }} is registered in the central inventory
+          {{ oracle_database_install_role_safety.inventory_location }}
+          and could not be detached, so it was kept. Detach it (runInstaller -detachHome ORACLE_HOME={{ oracle_database_install_role_oracle_home }})
           and remove it manually before retrying.
 
     - name: Remove the ORACLE_HOME created by this run
@@ -84,7 +85,7 @@
         - oracle_database_install_role_home_removable | bool
         - oracle_database_install_role_created.home | default(false)
       ansible.builtin.file:
-        path: "{{ oracle_home }}"
+        path: "{{ oracle_database_install_role_oracle_home }}"
         state: absent
 
     - name: List the content added to the pre-existing empty ORACLE_HOME
@@ -92,7 +93,7 @@
         - oracle_database_install_role_home_removable | bool
         - oracle_database_install_role_created.home_contents | default(false)
       ansible.builtin.find:
-        paths: "{{ oracle_home }}"
+        paths: "{{ oracle_database_install_role_oracle_home }}"
         file_type: any
         hidden: true
         recurse: false
@@ -140,5 +141,5 @@
       ansible.builtin.debug:
         msg: >-
           WARNING: rollback did not complete ({{ ansible_failed_task.name | default('unknown task') }}:
-          {{ ansible_failed_result.msg | default('no message') }}). Check {{ oracle_home }},
+          {{ ansible_failed_result.msg | default('no message') }}). Check {{ oracle_database_install_role_oracle_home }},
           {{ oracle_common_env_file }} and {{ oracle_common_inventory_pointer_file }} manually.

@@ -33,7 +33,8 @@ oracle_common_group_name: oracle_automation
 # oracle_common_manage_group_membership: true
 
 # --- Optional -----------------------------------------------------------------------------
-# Privileged account used through become (default: root).
+# Privileged account used through become (default: root). oracle_common_privileged_user is the
+# role-prefixed name; the original name b_user keeps working.
 # b_user: oracle_admin
 # Pin the patch bundle (otherwise <AIX|LINUX>_jan<YY>.tar.gz for the current year is used).
 # oracle_common_patch_file_name: LINUX_jan26.tar.gz
@@ -59,7 +60,7 @@ oracle_common_artifact_checksums:
 # Scripts and installer logs are staged in a db_owner-owned directory, by default
 # <mountpoint>/<db_owner>/ansible_staging (not /tmp). Modes that are group/world-writable are rejected.
 # oracle_common_staging_base: /u01/oracle/ansible_staging
-# script_permission: "0750"
+# script_permission: "0750"            # alias of oracle_common_script_permission
 # oracle_common_staging_dir_mode: "0750"
 # Group membership changes run through become as this user (the original used sudo):
 # oracle_common_group_membership_become_user: root
@@ -69,7 +70,7 @@ oracle_common_artifact_checksums:
 # per-job extra var (-e oracle_force_reinstall=true) over setting this for a whole group.
 # oracle_database_install_role_force_reinstall: false
 # Side-by-side install of a release that is already installed: give the new home its own path.
-# oracle_home: /u01/oracle/product/19.0.0.0_2
+# oracle_home: /u01/oracle/product/19.0.0.0_2   # alias of oracle_database_install_role_oracle_home
 # Central inventory: an existing /etc/oraInst.loc is always reused and never rewritten. On a
 # clean target it is created for <mountpoint>/<db_owner>/oraInventory unless set here.
 # oracle_database_install_role_new_inventory_location: /u01/app/oraInventory
@@ -78,6 +79,10 @@ oracle_common_artifact_checksums:
 # oracle_database_install_role_env_path_include_cwd: false
 # Keep what a failed run created, for troubleshooting (default: remove it).
 # oracle_database_install_role_rollback_on_failure: true
+# Hard limits for the installer and the patch run, and the status poll interval (seconds; original values).
+# oracle_database_install_role_install_timeout: 4000
+# oracle_database_install_role_patch_timeout: 4000
+# oracle_database_install_role_poll_interval: 30
 
 # --- Installer (roles/oracle_database_install_role/defaults/main.yml) -----------------------
 # Missing prerequisite packages (per-OS list, roles/oracle_common/vars/) fail the run. Setting this

@@ -3,7 +3,7 @@
 # Kept as the playbook's notification entry point; the implementation (Teams Workflows webhook,
 # best effort, no_log) lives in roles/oracle_common/tasks/notify.yml and is configured with the
 # oracle_common_notification_* / oracle_common_job_url_base / oracle_common_https_proxy inputs.
-- name: Send {{ call }} notification
+- name: Send the job notification {{ call }}
   ansible.builtin.include_role:
     name: oracle_common
     tasks_from: notify

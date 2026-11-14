@@ -5,7 +5,7 @@
 
 - name: Write the environment file {{ oracle_common_env_file }}
   become: true
-  become_user: "{{ b_user }}"
+  become_user: "{{ oracle_common_privileged_user }}"
   ansible.builtin.template:
     src: db_install.env.j2
     dest: "{{ oracle_common_env_file }}"
@@ -18,7 +18,7 @@
 
 - name: Read {{ oracle_common_env_file }}
   become: true
-  become_user: "{{ b_user }}"
+  become_user: "{{ oracle_common_privileged_user }}"
   ansible.builtin.slurp:
     src: "{{ oracle_common_env_file }}"
   register: oracle_database_install_role_env_final

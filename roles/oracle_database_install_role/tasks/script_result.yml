@@ -1,0 +1,36 @@
+---
+# Shows the output of a finished background script (database_install.bash, database_patch.bash) and fails
+# unless it exited 0. Include variables:
+#   __oracle_database_install_role_script_label        name used in the messages
+#   __oracle_database_install_role_script_result       the async_status result
+#   __oracle_database_install_role_script_status_file  where the script keeps its full log (for the message)
+# rc is missing when the job was stopped at its async limit, could not start, or was still running when
+# polling stopped; each of these is a failure too. The async_status tasks use failed_when: false so the
+# output is shown here before the failure, and an unfinished job lands here as well.
+
+- name: Show the output of {{ __oracle_database_install_role_script_label }}
+  ansible.builtin.debug:
+    var: __oracle_database_install_role_script_result.stdout_lines
+
+- name: Check that the step succeeded {{ __oracle_database_install_role_script_label }}
+  ansible.builtin.assert:
+    that: __oracle_database_install_role_script_rc == 0
+    fail_msg: "{{ __oracle_database_install_role_script_msg | select | join(' ') }}"
+    quiet: true
+  vars:
+    __oracle_database_install_role_script_rc: "{{ __oracle_database_install_role_script_result.rc | default(-1) | int }}"
+    __oracle_database_install_role_script_tail: >-
+      {{ ((__oracle_database_install_role_script_result.stdout_lines | default([]))
+          + (__oracle_database_install_role_script_result.stderr_lines | default([])))[-3:] }}
+    __oracle_database_install_role_script_msg:
+      - >-
+        {{ __oracle_database_install_role_script_label }} failed on {{ inventory_hostname }}
+        (rc={{ __oracle_database_install_role_script_rc if __oracle_database_install_role_script_rc != -1 else 'n/a' }}):
+      - >-
+        {{ ((__oracle_database_install_role_script_result.msg | default('no message') | string | regex_replace('\.\s*\Z', ''))
+            if __oracle_database_install_role_script_result.finished | default(false) | bool
+            else 'still running when polling stopped (it may still be running on the host)') ~ '.' }}
+      - >-
+        {{ ('Last output: ' ~ (__oracle_database_install_role_script_tail | join(' / ')) ~ '.')
+           if __oracle_database_install_role_script_tail | length > 0 else '' }}
+      - "Full log: {{ __oracle_database_install_role_script_status_file }}."

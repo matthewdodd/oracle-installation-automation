@@ -23,6 +23,22 @@
           {{ (oracle_common_job_url_base ~ __oracle_common_notify_job_id)
              if (oracle_common_job_url_base | length > 0 and __oracle_common_notify_job_id | string != 'n/a') else 'n/a' }}
 
+    # A failure card also names the failed stage and task and the error (oracle_common_failure, recorded by
+    # tasks/failure_record.yml), shortened to oracle_common_notification_error_max_length characters.
+    - name: Build notification card facts
+      ansible.builtin.set_fact:
+        __oracle_common_notify_facts: >-
+          {{ [{'title': 'Database', 'value': DATABASE_NAME | default('n/a') | string},
+              {'title': 'Host', 'value': target | default(inventory_hostname) | string},
+              {'title': 'Job URL', 'value': __oracle_common_notify_job_url | string},
+              {'title': 'Running User', 'value': __oracle_common_notify_runner | string},
+              {'title': 'Scheduled Job Name', 'value': __oracle_common_notify_schedule | string}]
+             + ([{'title': 'Failed step', 'value': (oracle_common_failure.stage | default('n/a')) ~ ' / '
+                                                   ~ (oracle_common_failure.task | default('n/a'))},
+                 {'title': 'Error', 'value': oracle_common_failure.msg | default('n/a') | string
+                                             | truncate(oracle_common_notification_error_max_length | int, true)}]
+                if __oracle_common_notify_state == 'failed' and oracle_common_failure is defined else []) }}
+
     - name: Send Installation Card
       ansible.builtin.uri:
         url: "{{ oracle_common_notification_webhook_url }}"
@@ -56,17 +72,7 @@
                     weight: Bolder
                     wrap: true
                   - type: FactSet
-                    facts:
-                      - title: Database
-                        value: "{{ DATABASE_NAME | default('n/a') }}"
-                      - title: Host
-                        value: "{{ target | default(inventory_hostname) }}"
-                      - title: Job URL
-                        value: "{{ __oracle_common_notify_job_url }}"
-                      - title: Running User
-                        value: "{{ __oracle_common_notify_runner }}"
-                      - title: Scheduled Job Name
-                        value: "{{ __oracle_common_notify_schedule }}"
+                    facts: "{{ __oracle_common_notify_facts }}"
                 actions: >-
                   {{ [{'type': 'Action.OpenUrl', 'title': 'View job', 'url': __oracle_common_notify_job_url}]
                      if __oracle_common_notify_job_url != 'n/a' else [] }}

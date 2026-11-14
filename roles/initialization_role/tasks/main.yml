@@ -1,10 +1,9 @@
 ---
 # Requires roles/oracle_common to have run first (OS variables + input validation).
+# Best effort, like the original (which used ignore_errors): a directory that cannot be removed is
+# reported as a WARNING; the staging directories are recreated and verified below.
 - name: Init Clean
-  block:
-    - name: Init Clean
-      ansible.builtin.include_tasks: init_clean.yml
-  ignore_errors: true
+  ansible.builtin.include_tasks: init_clean.yml
 
 - name: Add member to group
   when: oracle_common_manage_group_membership | bool
@@ -53,16 +52,16 @@
         state: directory
         mode: "{{ oracle_common_modes.oracle_common_staging_dir_mode }}"
 
-    - name: Create {{ remote_script_directory }}
+    - name: Create the script staging directory
       ansible.builtin.file:
-        path: "{{ remote_script_directory }}"
+        path: "{{ oracle_common_remote_script_directory }}"
         state: directory
         follow: false
         mode: "{{ oracle_common_modes.oracle_common_staging_dir_mode }}"
 
-    - name: Create {{ remote_output_directory }}
+    - name: Create the log staging directory
       ansible.builtin.file:
-        path: "{{ remote_output_directory }}"
+        path: "{{ oracle_common_remote_output_directory }}"
         state: directory
         follow: false
         mode: "{{ oracle_common_modes.oracle_common_staging_dir_mode }}"
@@ -73,8 +72,8 @@
         follow: false
         get_checksum: false
       loop:
-        - "{{ remote_script_directory }}"
-        - "{{ remote_output_directory }}"
+        - "{{ oracle_common_remote_script_directory }}"
+        - "{{ oracle_common_remote_output_directory }}"
       register: initialization_role_staging_stat
 
     - name: Verify the staging directories are private to {{ db_owner }}
@@ -103,4 +102,4 @@
     - name: Add member to group
       ansible.builtin.include_tasks: group_membership.yml
       loop:
-        - "{{ b_user }}"
+        - "{{ oracle_common_privileged_user }}"

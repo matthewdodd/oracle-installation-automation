@@ -8,14 +8,14 @@
   become: true
   become_user: "{{ db_owner }}"
   ansible.builtin.copy:
-    src: "{{ oracle_home }}/clone/rootpre.sh"
-    dest: "{{ oracle_home }}/clone/root.sh"
+    src: "{{ oracle_database_install_role_oracle_home }}/clone/rootpre.sh"
+    dest: "{{ oracle_database_install_role_oracle_home }}/clone/root.sh"
     remote_src: true
     mode: "{{ oracle_database_install_role_modes.root_script_mode }}"
 
 - name: Run rootpre.sh as root
   ansible.builtin.include_tasks: root_script.yml
   vars:
-    __oracle_database_install_role_root_script_dir: "{{ oracle_home }}/clone"
+    __oracle_database_install_role_root_script_dir: "{{ oracle_database_install_role_oracle_home }}/clone"
     __oracle_database_install_role_root_script_name: rootpre.sh
     __oracle_database_install_role_root_script_success_regex: "{{ oracle_common_rootpre_success_regex }}"

@@ -26,8 +26,9 @@
 # --- Privileged account -------------------------------------------------------------------
 # Account used through `become` for root-level work: /etc/oraInst.loc, the site prefix,
 # and running the root wrapper. `root` is the generic default; set a site account if the
-# connection user may only sudo to a specific privileged user.
-b_user: root
+# connection user may only sudo to a specific privileged user. The original variable name b_user
+# (inventories, AAP extra vars) is accepted as an alias.
+oracle_common_privileged_user: "{{ b_user | default('root') }}"
 
 # --- OS group membership --------------------------------------------------------------------
 # Add db_owner and b_user to oracle_common_group_name (the original behaviour). Set false where
@@ -49,11 +50,15 @@ oracle_common_group_membership_become_user: root
 # created as db_owner (never through a symlink) and then verified to be owned by db_owner and not
 # group/world-writable, so a pre-created or foreign directory stops the run.
 oracle_common_staging_base: "{{ mountpoint }}/{{ db_owner }}/ansible_staging"
-remote_script_directory: "{{ oracle_common_staging_base }}/ora_ansible_scripts_{{ DATABASE_NAME }}"
-remote_output_directory: "{{ oracle_common_staging_base }}/oracle_database_install_{{ DATABASE_NAME }}"
+# Per-database script and log directories. The original names remote_script_directory,
+# remote_output_directory and script_permission are accepted as aliases.
+oracle_common_remote_script_directory: >-
+  {{ remote_script_directory | default(oracle_common_staging_base ~ '/ora_ansible_scripts_' ~ DATABASE_NAME) }}
+oracle_common_remote_output_directory: >-
+  {{ remote_output_directory | default(oracle_common_staging_base ~ '/oracle_database_install_' ~ DATABASE_NAME) }}
 # Mode of the staged scripts (owner db_owner). Group/world-writable modes are rejected (0777 is
 # no longer possible).
-script_permission: "0750"
+oracle_common_script_permission: "{{ script_permission | default('0750') }}"
 # Mode of the staging base and the staging directories (owner db_owner); no group/world write.
 oracle_common_staging_dir_mode: "0750"
 # Mode of the parent of the staging base (by default ORACLE_BASE) when this run has to create it.
@@ -164,6 +169,8 @@ oracle_common_notification_validate_certs: true
 # Optional CA bundle (PEM) used to verify the webhook endpoint, e.g. a corporate TLS-inspection CA.
 oracle_common_notification_ca_path: ""
 oracle_common_notification_timeout: 30
+# A failure card shows the failed stage, task and error message, cut to this many characters.
+oracle_common_notification_error_max_length: 500
 # Adaptive Card colours per state (Default, Dark, Light, Accent, Good, Warning, Attention).
 oracle_common_notification_colours:
   start: Good

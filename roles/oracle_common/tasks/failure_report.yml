@@ -1,0 +1,29 @@
+---
+# Ends a failed stage: sends the failure notification (best effort, never fatal) and fails the host with
+# the original error, i.e. the failed task's name and message instead of the original bare "Fail".
+# Include variable:
+#   oracle_common_failure_stage  name of the failed stage, e.g. Initialize, Install
+# Uses oracle_common_failure when tasks/failure_record.yml already recorded it for this stage (needed when
+# the rescue runs other tasks first); otherwise records it from ansible_failed_task / ansible_failed_result.
+- name: Record the failure
+  when: (oracle_common_failure.stage | default('')) != (oracle_common_failure_stage | default('unknown'))
+  ansible.builtin.include_tasks: failure_record.yml
+
+# notify.yml already turns every send error into a WARNING; this rescue also covers an error while
+# including or templating it, so the original failure below is always reported.
+- name: Send the failure notification
+  block:
+    - name: Send the failure notification (best effort)
+      ansible.builtin.include_tasks: notify.yml
+      vars:
+        call: fail
+  rescue:
+    - name: Report notification failure (non-fatal)
+      ansible.builtin.debug:
+        msg: "WARNING: the failure notification was not sent (details hidden: the request carries a secret)"
+
+- name: Fail with the original error
+  ansible.builtin.fail:
+    msg: >-
+      {{ oracle_common_failure.stage }} failed on {{ inventory_hostname }} in task
+      '{{ oracle_common_failure.task }}': {{ oracle_common_failure.msg }}

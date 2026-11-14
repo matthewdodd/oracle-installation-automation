@@ -5,7 +5,7 @@
 #   __oracle_database_install_role_root_script_name           script run by the become method (root.sh, rootpre.sh)
 #   __oracle_database_install_role_root_script_success_regex  output that must appear (empty: not checked)
 # Method (oracle_common_root_script_method, alias oracle_root_script_method):
-#   wrapper  (default, the original flow) b_user runs the site root wrapper; files/root_wrapper.exp answers
+#   wrapper  (default, the original flow) oracle_common_privileged_user runs the site root wrapper; files/root_wrapper.exp answers
 #            its menu with the directory and fails on a timeout, on the wrapper ending early and on an
 #            unexpected prompt. The wrapper always runs <dir>/root.sh (tasks/rootpre.yml copies rootpre.sh there).
 #   become   <dir>/<script> runs directly through become as oracle_common_root_script_become_user (root),
@@ -16,7 +16,7 @@
 - name: Run {{ __oracle_database_install_role_root_script_name ~ ' through the root wrapper' }}
   when: oracle_common_root_script_method == 'wrapper'
   become: true
-  become_user: "{{ b_user }}"
+  become_user: "{{ oracle_common_privileged_user }}"
   ansible.builtin.command:
     # Static expect script (no Jinja in it); values come from the environment below.
     argv:

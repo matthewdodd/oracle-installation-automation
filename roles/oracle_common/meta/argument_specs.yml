@@ -11,8 +11,10 @@ argument_specs:
       - Must run (import_role) before initialization_role and oracle_database_install_role.
       - Derived paths, overridable but not listed as options because their defaults are templates of
         the inputs below - oracle_common_staging_base (<mountpoint>/<db_owner>/ansible_staging, owned by db_owner),
-        remote_script_directory (<oracle_common_staging_base>/ora_ansible_scripts_<DATABASE_NAME>),
-        remote_output_directory (<oracle_common_staging_base>/oracle_database_install_<DATABASE_NAME>),
+        oracle_common_remote_script_directory (alias remote_script_directory;
+        <oracle_common_staging_base>/ora_ansible_scripts_<DATABASE_NAME>),
+        oracle_common_remote_output_directory (alias remote_output_directory;
+        <oracle_common_staging_base>/oracle_database_install_<DATABASE_NAME>),
         oracle_common_env_dir (<oracle_common_site_prefix>), oracle_common_env_file (<oracle_common_env_dir>/<DATABASE_NAME>.env)
         and oracle_common_patch_file_name_fallback (<AIX|LINUX>_jan<YY>.tar.gz, YY from the target's clock; used only while
         oracle_common_patch_file_name is empty).
@@ -80,20 +82,28 @@ argument_specs:
         type: str
         default: root
         description: Account (through become) that runs the group change command; the original used sudo, i.e. root.
-      b_user:
+      oracle_common_privileged_user:
         type: str
         default: root
-        description: Privileged account used through become for root-level work.
+        description: Privileged account used through become for root-level work. Defaults to b_user when that is set.
+      b_user:
+        type: str
+        description: Original name of oracle_common_privileged_user, still accepted.
       oracle_common_staging_base:
         type: str
         description:
           - Base directory for the per-database staging directories (default <mountpoint>/<db_owner>/ansible_staging,
             created as db_owner when missing). Avoid world-writable locations such as /tmp; the staging directories are
             verified to be owned by db_owner and not group/world-writable either way.
-      script_permission:
+      oracle_common_script_permission:
         type: str
         default: "0750"
-        description: Mode of the staged scripts (owner db_owner). Group/world-writable modes such as 0777 are rejected.
+        description:
+          - Mode of the staged scripts (owner db_owner). Group/world-writable modes such as 0777 are rejected.
+          - Defaults to script_permission when that is set.
+      script_permission:
+        type: str
+        description: Original name of oracle_common_script_permission, still accepted.
       oracle_common_staging_dir_mode:
         type: str
         default: "0750"
@@ -224,6 +234,10 @@ argument_specs:
         type: int
         default: 30
         description: Webhook request timeout in seconds.
+      oracle_common_notification_error_max_length:
+        type: int
+        default: 500
+        description: A failure card shows the failed stage, task and error message, cut to this many characters.
       oracle_common_notification_colours:
         type: dict
         description: Adaptive Card colour per state (keys start, success, fail).
@@ -240,3 +254,41 @@ argument_specs:
         type: str
         required: true
         description: Job state, start | success | fail (any other value is treated as fail).
+      oracle_common_failure:
+        type: dict
+        description:
+          - Set by tasks/failure_record.yml (stage, task, msg). A failure card shows the failed stage and task and the
+            error message (cut to oracle_common_notification_error_max_length characters).
+  failure_record:
+    short_description: Record why a playbook stage failed (first task of a rescue section).
+    description:
+      - Sets the fact oracle_common_failure (stage, task, msg) from ansible_failed_task.name and ansible_failed_result.msg,
+        before a rollback or cleanup with rescues of their own can replace them.
+    options:
+      oracle_common_failure_stage:
+        type: str
+        required: true
+        description: Name of the failed stage, e.g. Initialize, Install.
+  failure_report:
+    short_description: Send the failure notification (best effort) and fail the host with the original error.
+    description:
+      - Records the failure first unless tasks/failure_record.yml already did for this stage.
+      - The notification never fails the run; the final error names the stage, the failed task and its message.
+    options:
+      oracle_common_failure_stage:
+        type: str
+        required: true
+        description: Name of the failed stage, e.g. Initialize, Install.
+  remove_staging:
+    short_description: Remove one staging path as the connection user, else as db_owner (best effort).
+    description:
+      - A path neither account can remove is reported as a WARNING with the error; the run continues, as on main.
+    options:
+      oracle_common_remove_path:
+        type: str
+        required: true
+        description: Absolute path to remove.
+      db_owner:
+        type: str
+        required: true
+        description: OS user that owns the staging directories.
