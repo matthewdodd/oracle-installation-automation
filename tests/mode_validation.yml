@@ -8,6 +8,9 @@
 # fix the guards matched the decimal text ("511" passed, "420" was reported group-writable) and the
 # modules then applied 0777. Each case below checks the normalised value, which inputs are rejected,
 # and (for one accepted integer) the mode the file module really applies.
+#
+# It also covers the '..' path guard (__oracle_common_re_dotdot): a '..' component at the start, in the
+# middle or at the end of a path is rejected, while names that merely contain dots are accepted.
 - name: Permission-mode validation regression test
   hosts: localhost
   connection: local
@@ -52,6 +55,28 @@
         normalised: {home_mode: "0644", download_file_mode: "0644", inventory_dir_mode: "0770", root_script_mode: "0755"}
         rejected: []
       - {name: group-writable symbolic tree, modes: {extracted_mode: "u+rwX,g+rwX"}, normalised: {}, rejected: [extracted_mode]}
+    # Strings the '..' pattern must find (rejected) or must not find (accepted).
+    path_validation_dotdot_rejected: [.., ../u01, /.., /u01/.., /u01/app/.., /u01/../app, /u01/app/../.., ../..]
+    path_validation_dotdot_accepted: [/u01, /u01/app..x, /u01/app.., /u01/..app, /u01/.hidden, /u01/./app, /u01/..., /u01/app/19.0.0.0, ., ...]
+    path_validation_baseline:
+      mountpoint: /u01
+      oracle_common_site_prefix: /local
+      oracle_common_staging_base: /u01/oracle/ansible_staging
+    path_validation_cases:
+      - {name: valid baseline, paths: {}, rejected: []}
+      - name: trailing '..'
+        paths: {mountpoint: /u01/app/.., oracle_common_site_prefix: /local/.., oracle_common_staging_base: /u01/oracle/..}
+        rejected: [mountpoint, oracle_common_site_prefix, oracle_common_staging_base]
+      - name: inner '..'
+        paths: {mountpoint: /u01/../etc, oracle_common_site_prefix: /local/../etc, oracle_common_staging_base: /u01/../tmp}
+        rejected: [mountpoint, oracle_common_site_prefix, oracle_common_staging_base]
+      - {name: root followed by '..', paths: {mountpoint: /.., oracle_common_staging_base: /../tmp}, rejected: [mountpoint, oracle_common_staging_base]}
+      - name: relative '..' paths
+        paths: {mountpoint: .., oracle_common_site_prefix: ../local, oracle_common_staging_base: ../tmp}
+        rejected: [mountpoint, oracle_common_site_prefix, oracle_common_staging_base]
+      - name: names that merely contain dots
+        paths: {mountpoint: /u01/app..x, oracle_common_site_prefix: /local/.hidden, oracle_common_staging_base: /u01/oracle/19.0.0.0/stage..}
+        rejected: []
   tasks:
     - name: Run the oracle_common cases
       ansible.builtin.include_tasks: tasks/common_mode_case.yml
@@ -66,6 +91,29 @@
       loop_control:
         loop_var: mode_validation_case
         label: "{{ mode_validation_case.name }}"
+
+    - name: Check the '..' pattern directly
+      ansible.builtin.assert:
+        that:
+          - path_validation_dotdot_rejected | reject('search', __oracle_common_re_dotdot) | list | length == 0
+          - path_validation_dotdot_accepted | select('search', __oracle_common_re_dotdot) | list | length == 0
+        fail_msg: >-
+          not rejected: {{ path_validation_dotdot_rejected | reject('search', __oracle_common_re_dotdot) | list }};
+          wrongly rejected: {{ path_validation_dotdot_accepted | select('search', __oracle_common_re_dotdot) | list }}
+        quiet: true
+
+    - name: Run the oracle_common path cases
+      ansible.builtin.include_tasks: tasks/common_path_case.yml
+      loop: "{{ path_validation_cases }}"
+      loop_control:
+        loop_var: path_validation_case
+        label: "{{ path_validation_case.name }}"
+
+    - name: Restore the baseline paths
+      ansible.builtin.set_fact:
+        mountpoint: "{{ path_validation_baseline.mountpoint }}"
+        oracle_common_site_prefix: "{{ path_validation_baseline.oracle_common_site_prefix }}"
+        oracle_common_staging_base: "{{ path_validation_baseline.oracle_common_staging_base }}"
 
     # The applied mode equals the validated one: int 420 must give 0644 on disk, not 0420 or 0777.
     - name: Apply a normalised integer mode with the file module

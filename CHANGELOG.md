@@ -171,6 +171,10 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
 - The play no longer aborts on an undefined `target`, or on missing `tower_*` variables outside AAP.
 - A missing `mountpoint` or `db_owner` is reported in the list of missing required arguments, instead of
   as `'mountpoint' is undefined`.
+- The `..` path guard (`__oracle_common_re_dotdot`) now finds a `..` component at the start, in the middle
+  or at the end of a path on its own (`..`, `../x`, `/u01/..`), instead of only `/../`. Names that merely
+  contain dots (`/u01/app..x`, `/u01/.hidden`, `19.0.0.0`) are still accepted. `tests/mode_validation.yml`
+  covers both.
 
 ### Security
 

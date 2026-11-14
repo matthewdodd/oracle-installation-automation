@@ -29,13 +29,13 @@
     __version_ok: "{{ database_version is defined and (database_version | string) in oracle_common_artifactory_version_map }}"
     __mountpoint_ok: >-
       {{ mountpoint is defined and (mountpoint | string) is match(__oracle_common_re_abs_path)
-         and ((mountpoint | string) ~ '/') is not search(__oracle_common_re_dotdot) }}
+         and (mountpoint | string) is not search(__oracle_common_re_dotdot) }}
     __prefix_ok: >-
       {{ oracle_common_site_prefix is defined and (oracle_common_site_prefix | string) is match(__oracle_common_re_abs_path)
-         and ((oracle_common_site_prefix | string) ~ '/') is not search(__oracle_common_re_dotdot) }}
+         and (oracle_common_site_prefix | string) is not search(__oracle_common_re_dotdot) }}
     __staging_ok: >-
       {{ (oracle_common_staging_base | string) is match(__oracle_common_re_abs_path)
-         and ((oracle_common_staging_base | string) ~ '/') is not search(__oracle_common_re_dotdot) }}
+         and (oracle_common_staging_base | string) is not search(__oracle_common_re_dotdot) }}
     # Names of the normalised modes that are not a plain octal mode, or grant group or world write.
     __oracle_common_bad_modes: >-
       {{ (oracle_common_modes | dict2items | rejectattr('value', 'match', __oracle_common_re_octal_mode) | map(attribute='key') | list)
@@ -63,7 +63,7 @@
           oracle_common_site_prefix is required: the absolute site directory for <DB>.env files and software staging
           (e.g. /local); got '{{ oracle_common_site_prefix | default('<undefined>') }}'
       - failed: "{{ not __staging_ok }}"
-        msg: "oracle_common_staging_base must be an absolute path without whitespace or shell metacharacters"
+        msg: "oracle_common_staging_base must be an absolute path without whitespace, shell metacharacters or '..'"
       - failed: >-
           {{ __sid_ok and __prefix_ok and __staging_ok and not (
                (oracle_common_remote_script_directory | string) is match(__oracle_common_re_abs_path)
