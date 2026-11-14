@@ -18,9 +18,12 @@
 #   molecule test                     # full sequence
 #   molecule converge && molecule verify && molecule destroy
 dependency:
-  name: galaxy
   # Installs collections.yml from this directory (community.docker for the driver, ansible.posix for its
-  # create playbook).
+  # create playbook). Nothing else installs them: the CI workflow only installs requirements-test.txt.
+  # A shell step and not the galaxy one, because the galaxy dependency always runs a roles install as well
+  # and reports it as missing when there is no roles requirements.yml (this scenario needs no roles).
+  name: shell
+  command: ansible-galaxy collection install --requirements-file "${MOLECULE_SCENARIO_DIRECTORY}/collections.yml"
 
 driver:
   name: docker
@@ -131,14 +134,14 @@ scenario:
   # so a second run fails by design and the built-in step (which needs a successful run with changed=0)
   # cannot pass. verify.yml instead reruns converge.yml and asserts that it is refused by that guard with
   # changed=0 and that nothing on the hosts changed (file contents, modes, owners and timestamps).
+  # There is no cleanup step: the scenario changes nothing outside its containers (the artifact repository
+  # runs inside each container), so destroy removes everything it created.
   test_sequence:
     - dependency
-    - cleanup
     - destroy
     - syntax
     - create
     - prepare
     - converge
     - verify
-    - cleanup
     - destroy
