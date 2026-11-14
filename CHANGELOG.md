@@ -178,6 +178,10 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
   or at the end of a path on its own (`..`, `../x`, `/u01/..`), instead of only `/../`. Names that merely
   contain dots (`/u01/app..x`, `/u01/.hidden`, `19.0.0.0`) are still accepted. `tests/mode_validation.yml`
   covers both.
+- The environment-file backup message is accurate in every case. It shows the backup path when one was
+  made, and otherwise says why none was made: check mode, `oracle_database_install_role_env_file_backup`
+  is false, or no backup was needed because the content was unchanged (only attributes such as the mode
+  were corrected). Previously that last case wrongly said the backup setting was false.
 
 ### Security
 

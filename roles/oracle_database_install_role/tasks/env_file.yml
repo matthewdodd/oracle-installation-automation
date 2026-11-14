@@ -20,11 +20,19 @@
   when:
     - oracle_database_install_role_safety.env_file_exists | bool
     - oracle_database_install_role_env_file_result is changed
+  # Four outcomes: a backup was made (its path), check mode, backups disabled, or backups enabled but none
+  # needed because the content was unchanged (the task changed only attributes such as the mode).
+  vars:
+    __oracle_database_install_role_env_backup_path: "{{ oracle_database_install_role_env_file_result.backup_file | default('') }}"
   ansible.builtin.debug:
     msg: >-
-      Previous {{ oracle_common_env_file }} saved as
-      {{ oracle_database_install_role_env_file_result.backup_file
-         | default('n/a (check mode)' if ansible_check_mode else 'n/a (oracle_database_install_role_env_file_backup is false)') }}
+      {{ ('Previous ' ~ oracle_common_env_file ~ ' saved as ' ~ __oracle_database_install_role_env_backup_path)
+         if __oracle_database_install_role_env_backup_path | length > 0
+         else ('No backup of ' ~ oracle_common_env_file ~ ' made: '
+               ~ ('check mode' if ansible_check_mode
+                  else ('not needed, content unchanged (only attributes such as the mode were corrected)'
+                        if oracle_database_install_role_env_file_backup | bool
+                        else 'oracle_database_install_role_env_file_backup is false'))) }}
 
 - name: Record that this run created the environment file
   when: not (oracle_database_install_role_safety.env_file_exists | bool)
