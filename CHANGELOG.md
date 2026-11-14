@@ -124,6 +124,11 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
   vault ids and rekey rotation.
 - `tests/mode_validation.yml`, a controller-only permission-mode regression test.
 - README with full documentation, and this changelog.
+- Licensing: the repository is now licensed under `GPL-3.0-or-later` (`LICENSE`, the unmodified GNU GPL v3
+  text). `NOTICE` states that Oracle software, patches and installer formats, and Red Hat/IBM operating
+  systems and packages, are not covered and stay under their owners' terms. It also lists the file that
+  is covered only in part. The roles' `galaxy_info.license` changes from `NOASSERTION` to
+  `GPL-3.0-or-later`.
 
 ### Changed
 

@@ -6,9 +6,8 @@ galaxy_info:
   description: >-
     Prepares a host for an Oracle Database install: recreates the private per-database staging
     directories as db_owner and, optionally, adds db_owner and the privileged user to an OS group.
-  # No licence has been chosen yet (owner decision; there is no LICENSE file). NOASSERTION is the
-  # SPDX value for "not stated". Replace it when the repository licence is decided.
-  license: NOASSERTION
+  # SPDX identifier. See LICENSE and NOTICE (Oracle and Red Hat/IBM software are not covered).
+  license: GPL-3.0-or-later
   # Same floor as the pinned controller toolchain in requirements.txt (ansible-core 2.22.0).
   min_ansible_version: "2.22"
   # Platforms with a vars file in roles/oracle_common/vars/ (selected from facts at run time).

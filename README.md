@@ -29,6 +29,7 @@ Contents
 - [Migrating existing job templates](#migrating-existing-job-templates)
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
+- [License](#license)
 
 ## What it does
 
@@ -131,6 +132,7 @@ roles/oracle_database_install_role/
   files/*.bash, root_wrapper.exp  installer, patch and root-wrapper scripts (interfaces documented in their headers)
 tests/mode_validation.yml       controller-only regression test for permission modes
 requirements.txt, collections/requirements.yml   pinned controller tooling
+LICENSE, NOTICE                 GPL-3.0-or-later licence text; scope and Oracle, Red Hat/IBM carve-outs
 ```
 
 Every role documents its inputs in `meta/argument_specs.yml`. Ansible checks them when the role runs.
@@ -701,3 +703,14 @@ that already has an Oracle home, to see the refusals, and a clean host, for a fu
 | `still running when polling stopped` / `Timeout exceeded` | Raise `oracle_database_install_role_install_timeout` / `_patch_timeout`. |
 | `WARNING: ... notification was not sent` | Check the webhook URL, proxy and CA settings. The run is not affected. |
 | Staging directory `must be a real directory owned by <db_owner>` | Something else created that path. Remove it, or choose another `oracle_common_staging_base`. |
+
+## License
+
+The automation code in this repository is licensed under the GNU General Public License v3.0 or later
+(`GPL-3.0-or-later`). The full text is in [LICENSE](LICENSE).
+
+The licence does not cover Oracle Database software, OPatch, Oracle patches or the Oracle installer
+response-file format, which you must license from Oracle. It also does not cover Red Hat Enterprise
+Linux, IBM AIX or their packages, which Red Hat and IBM license under their own terms. Artifacts
+downloaded from your repository keep their own licences. [NOTICE](NOTICE) gives the details, the
+trademarks, and the files that are covered only in part.

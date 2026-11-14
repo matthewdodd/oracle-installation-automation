@@ -1,0 +1,92 @@
+Oracle Installation automation - licensing notice
+==================================================
+
+Licence of this repository
+--------------------------
+
+The automation code in this repository (Ansible playbooks, roles, task files,
+templates, variable files, shell and expect scripts, tests, Molecule scenario
+and documentation) is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version (SPDX: GPL-3.0-or-later).
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+The full licence text is in the LICENSE file, and is also available at
+<https://www.gnu.org/licenses/gpl-3.0.html>.
+
+The GPL grant covers only the material written by this project. It does not
+cover, and grants no rights to, the third-party software and formats described
+below.
+
+Oracle software and formats
+---------------------------
+
+This repository does not include, and grants no rights to, Oracle Database
+software, OPatch, Oracle patches (Release Updates, OJVM patches or any other
+patch), the Oracle Universal Installer (runInstaller), root.sh or any other
+Oracle-supplied script, or the Oracle installer response-file format and its
+key names. These remain under Oracle's licence terms. You must obtain your own
+licence for them from Oracle and comply with its terms. The automation only
+drives Oracle software that you have licensed and placed in your own artifact
+repository.
+
+Red Hat and IBM software
+------------------------
+
+Red Hat Enterprise Linux (and rebuilds such as Oracle Linux, Rocky Linux and
+AlmaLinux), IBM AIX and the operating-system packages the automation checks
+for or uses are licensed by their owners (Red Hat, IBM, Oracle or the package
+authors) under their own terms. Nothing in this repository grants any right to
+them.
+
+Artifacts and dependencies obtained at run time
+-----------------------------------------------
+
+Artifacts the automation downloads from your artifact repository (Oracle
+binaries, patches, OPatch and any other files) keep their own licences. The
+Ansible collections listed in collections/requirements.yml and
+molecule/default/collections.yml, and the Python packages listed in
+requirements.txt and requirements-test.txt, are not part of this repository;
+they are installed separately and are licensed by their authors under their
+own terms.
+
+Files not covered, or covered only in part, by the GPL grant
+------------------------------------------------------------
+
+An audit of this repository found no file copied from Oracle-, Red Hat- or
+IBM-owned material. There is no copy of an Oracle response-file template
+(such as db_install.rsp), of an Oracle or Red Hat/IBM script, or of any vendor
+binary. The following file is written by this project but reproduces parts of
+an Oracle-defined format. It is covered by the GPL only to the extent this
+project authored it:
+
+- roles/oracle_database_install_role/files/database_install.bash
+  It generates an Oracle installer response file. The response-file key names
+  (for example oracle.install.option, oracle.install.db.InstallEdition and the
+  oracle.install.db.OS*_GROUP keys), the response-file schema identifiers
+  (rspfmt_dbinstall_response_schema_v19.0.0, v12.2.0 and v12.1.0) and the
+  12.1.0.2 security-update answers (DECLINE_SECURITY_UPDATES,
+  SECURITY_UPDATES_VIA_MYORACLESUPPORT) are defined by Oracle's installer and
+  its db_install.rsp template, and remain subject to Oracle's terms. The
+  script's own logic, structure and comments are project code under the GPL.
+
+The Molecule test stubs in molecule/default/files/stubs/ (runInstaller, opatch,
+root.sh and root-wrapper) are not Oracle software. They are project code that
+only imitates the command names and the behaviour the playbook relies on, and
+they are covered by the GPL grant like the rest of the repository.
+
+Trademarks
+----------
+
+Oracle is a registered trademark of Oracle and/or its affiliates. Red Hat and Red Hat Enterprise Linux (RHEL) are trademarks or
+registered trademarks of Red Hat, LLC or its subsidiaries in the United States
+and other countries. IBM and AIX are trademarks of International Business
+Machines Corporation, registered in many jurisdictions worldwide. Microsoft
+Teams is a trademark of the Microsoft group of companies. Ansible is a
+registered trademark of Red Hat, LLC. Other names may be trademarks of their
+respective owners. Their use here is only to identify the software the
+automation works with and does not imply endorsement by, or affiliation with,
+their owners.
