@@ -287,9 +287,13 @@
       changed_when: false
       failed_when: false
 
+    # Failed tasks are reported on stderr: Molecule's ansible.cfg (inherited through ANSIBLE_CONFIG) sets
+    # display_failed_stderr, so the guard message is there and only the task headers and recap are on stdout.
     - name: Show the end of the second converge
       ansible.builtin.debug:
-        msg: "{{ molecule_second_converge.stdout_lines[-25:] }}"
+        msg:
+          stdout: "{{ molecule_second_converge.stdout_lines[-25:] }}"
+          stderr: "{{ molecule_second_converge.stderr_lines[-25:] }}"
       run_once: true
 
     - name: Check the second converge was refused by the guard without changes
@@ -306,8 +310,11 @@
           Expected rc 2 and "{{ inventory_hostname }} : ... changed=0 unreachable=0 failed=1" with the ORACLE_HOME guard
           message; got rc {{ molecule_second_converge.rc }}, recap (changed, unreachable, failed) {{ molecule_recap }}.
       vars:
-        # Whitespace collapsed and YAML-doubled quotes undone: the callback may wrap long messages.
-        molecule_output: "{{ molecule_second_converge.stdout | regex_replace('\\s+', ' ') | replace(\"''\", \"'\") }}"
+        # stdout and stderr (failures go to stderr, see above); whitespace collapsed and YAML-doubled quotes
+        # undone: the callback may wrap long messages. The recap below is always on stdout.
+        molecule_output: >-
+          {{ (molecule_second_converge.stdout ~ '\n' ~ molecule_second_converge.stderr)
+             | regex_replace('\\s+', ' ') | replace("''", "'") }}
         molecule_recap: >-
           {{ molecule_second_converge.stdout
              | regex_search('(?m)^' ~ (inventory_hostname | regex_escape) ~ '\s*:\s*ok=\d+\s+changed=(\d+)\s+unreachable=(\d+)\s+failed=(\d+)',
