@@ -1,0 +1,18 @@
+---
+# Required inputs (no defaults; validated in resolution plan step 10):
+#   DATABASE_NAME, db_owner
+
+# OS group that db_owner and b_user are added to.
+# PLACEHOLDER: set per environment (resolution plan step 9).
+GROUP_NAME: ansibleUserGroup
+
+# Privileged user used through `become`; also added to GROUP_NAME.
+# PLACEHOLDER: set per environment (resolution plan step 9).
+b_user: becomeUser
+
+# TODO(resolution plan step 15): tighten; 0777 is a privilege-escalation risk.
+script_permission: "0777"
+
+# Remote staging locations. Keep in sync with roles/oracle_database_install_role/defaults/main.yml.
+remote_script_directory: "/tmp/ora_ansible_scripts_{{ DATABASE_NAME }}"
+remote_output_directory: "/tmp/oracle_database_install_{{ DATABASE_NAME }}"

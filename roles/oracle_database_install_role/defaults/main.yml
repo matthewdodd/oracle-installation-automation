@@ -1,1 +1,29 @@
-#ansible_ssh_user: 
+---
+# Required inputs (no defaults; validated in resolution plan step 10):
+#   DATABASE_NAME, db_owner, database_version, mountpoint, target
+
+# Privileged user used through `become` for root-level steps.
+# PLACEHOLDER: set per environment (resolution plan step 9).
+b_user: becomeUser
+
+# Mode applied to staged scripts and directories.
+# TODO(resolution plan step 15): tighten; 0777 is a privilege-escalation risk.
+script_permission: "0777"
+
+# Remote staging locations. Keep in sync with roles/initialization_role/defaults/main.yml.
+remote_script_directory: "/tmp/ora_ansible_scripts_{{ DATABASE_NAME }}"
+remote_output_directory: "/tmp/oracle_database_install_{{ DATABASE_NAME }}"
+
+# Install layout
+oracle_home: "{{ mountpoint }}/{{ db_owner }}/product/{{ database_version }}"
+patch_folder_prefix: /local
+install_folder_name: "{{ patch_folder_prefix }}/software/{{ database_version }}"
+
+# Artifactory source
+# TODO(resolution plan step 10): replace the silent 12.1.0.2 fallback with an allow-list.
+artf_ver: "{{ '19.0.0' if database_version == '19.0.0.0' else ('12.2.0.1' if database_version == '12.2.0.1' else '12.1.0.2') }}"
+# PLACEHOLDER: set per environment (resolution plan step 9).
+artifactory_repo: "https://artifactory.domain.com/artifactory/release/oracledatabase/{{ artf_ver }}"
+install_file_name: "{{ 'AIX' if ansible_facts['distribution'] == 'AIX' else 'LINUX' }}_binaries.tar.gz"
+# TODO(resolution plan step 9 / M1): date-derived; make this an explicit, pinned input.
+patch_file_name: "{{ 'AIX' if ansible_facts['distribution'] == 'AIX' else 'LINUX' }}_jan{{ (ansible_facts['date_time']['year'] | string)[-2:] }}.tar.gz"

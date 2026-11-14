@@ -1,17 +1,17 @@
 ---
-#tasks file for Oracle Database Installation
+# tasks file for Oracle Database Installation
+# Inputs and derived paths are defined in ../defaults/main.yml.
 
-- set_fact:
-    ORACLE_SID: "{{ DATABASE_NAME }}"
-    script_permission: 0777
-    server_name: "{{ target }}"
-
+# Copied as db_owner: on main the effective copy was the db_owner one in initialization_role
+# (the later connection-user copy was a no-op), so the staged scripts stay owned by db_owner.
 - name: Copy Scripts to {{ remote_script_directory }}
+  become: true
+  become_user: "{{ db_owner }}"
   block:
-    - name: Create roles/oracle_database_install_role/files if not exist
-      copy: 
-        src: roles/oracle_database_install_role/files/ 
-        dest: "{{ remote_script_directory }}/oracle_database_install_role" 
+    - name: Copy role scripts to {{ remote_script_directory }}/oracle_database_install_role
+      ansible.builtin.copy:
+        src: "{{ role_path }}/files/"
+        dest: "{{ remote_script_directory }}/oracle_database_install_role"
         mode: "{{ script_permission }}"
 
 - name: Oracle Database Installation
@@ -25,7 +25,7 @@
         state: directory
 
     - name: Download and copy binaries to server
-      include: copy_files_to_server.yml
+      ansible.builtin.include_tasks: copy_files_to_server.yml
       vars:
         artf_file_name: "{{ install_file_name }}"
         temp_dir: "{{ install_folder_name }}"
@@ -126,7 +126,7 @@
         cat /local/{{ DATABASE_NAME }}.env
     
     - name: Run the rootpre.sh (AIX)
-      include: rootpre.yml
+      ansible.builtin.include_tasks: rootpre.yml
       when:
         - ansible_distribution == "AIX"
     
@@ -185,7 +185,7 @@
         msg: "{{ root_output }}"
 
     - name: Download and copy patches to server
-      include: copy_files_to_server.yml
+      ansible.builtin.include_tasks: copy_files_to_server.yml
       vars:
         artf_file_name: "{{ patch_file_name }}"
         temp_dir: "{{ install_folder_name }}"

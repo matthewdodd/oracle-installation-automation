@@ -1,29 +1,42 @@
 ---
-- set_fact:
-    task_runner: "{{ tower_user_name if tower_user_name is defined else 'scheduler' }}"
-    sched_name: "{{ tower_schedule_name if tower_schedule_name is defined else 'manual job' }}"
-    webhook_url: "office.com/webhookURL"
-    notify_state: "{{ 'started' if call == 'start' else ( 'completed' if call == 'success' else 'failed' ) }}"
-    notify_colour: "{{ '13E81D' if call == 'start' else ( '11A8E8' if call == 'success' else 'f21818' ) }}"
+# Sends a Teams card for the job state given in `call` (start | success | fail).
+# Notifications are best-effort: they are skipped when `notification_webhook_url`
+# is not set, and a failure to send never fails the playbook.
+# `notification_webhook_url` is a secret; supply it from Ansible Vault or an AAP credential.
+- name: Build notification facts
+  ansible.builtin.set_fact:
+    task_runner: "{{ tower_user_name | default(awx_user_name | default('scheduler')) }}"
+    sched_name: "{{ tower_schedule_name | default(awx_schedule_name | default('manual job')) }}"
+    notify_job_id: "{{ tower_job_id | default(awx_job_id | default('n/a')) }}"
+    notify_job_name: "{{ tower_job_template_name | default(awx_job_template_name | default('manual run')) }}"
+    notify_state: "{{ 'started' if call == 'start' else ('completed' if call == 'success' else 'failed') }}"
+    notify_colour: "{{ '13E81D' if call == 'start' else ('11A8E8' if call == 'success' else 'f21818') }}"
 
 - name: Send Installation Card
-  office_365_connector_card:
-    webhook: "{{ webhook_url }}"
-    title: "Job #{{ tower_job_id }} '{{ tower_job_template_name }}'"
-    summary: "Database Binaries for '{{ DATABASE_NAME }}' installation"
-    sections:
-    - title: Database binary installation has {{ notify_state }}
-      facts:
-      - name: "Database"
-        value: "{{ DATABASE_NAME }}" 
-      - name: "Host"
-        value: "{{ target }}" 
-      - name: "URL" 
-        value: "https://ansibletower.domain.com/#/jobs/playbook/{{ tower_job_id }}"
-      - name: "Running User"
-        value: "{{ task_runner }}"
-      - name: "Scheduled Job Name"
-        value: "{{ sched_name }}"
-    color: "{{ notify_colour }}"
-  environment:
-    https_proxy: http://proxy-url:8080
+  when: notification_webhook_url | default('') | length > 0
+  block:
+    - name: Send Installation Card
+      community.general.office_365_connector_card:
+        webhook: "{{ notification_webhook_url }}"
+        title: "Job #{{ notify_job_id }} '{{ notify_job_name }}'"
+        summary: "Database Binaries for '{{ DATABASE_NAME }}' installation"
+        sections:
+          - title: Database binary installation has {{ notify_state }}
+            facts:
+              - name: "Database"
+                value: "{{ DATABASE_NAME }}"
+              - name: "Host"
+                value: "{{ target }}"
+              - name: "URL"
+                value: "https://ansibletower.domain.com/#/jobs/playbook/{{ notify_job_id }}"
+              - name: "Running User"
+                value: "{{ task_runner }}"
+              - name: "Scheduled Job Name"
+                value: "{{ sched_name }}"
+        color: "{{ notify_colour }}"
+      environment:
+        https_proxy: http://proxy-url:8080
+  rescue:
+    - name: Report notification failure (non-fatal)
+      ansible.builtin.debug:
+        msg: "WARNING: '{{ notify_state }}' notification was not sent: {{ ansible_failed_result.msg | default('unknown error') }}"

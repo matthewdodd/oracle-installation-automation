@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    # Non-blocking until the baseline is clean (resolution plan step 30 makes it required).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.15"
+          cache: pip
+
+      - name: Install tooling
+        run: |
+          pip install -r requirements.txt
+          ansible-galaxy collection install -r collections/requirements.yml
+
+      - name: yamllint
+        if: always()
+        run: yamllint .
+
+      - name: shellcheck
+        if: always()
+        run: shellcheck roles/*/files/*.bash
+
+      - name: ansible-playbook --syntax-check
+        if: always()
+        # `target` is required to template the second play's `hosts:`; any value works here.
+        run: ansible-playbook -i inventory/example/hosts.yml --syntax-check oracle_database_install.yml -e target=dbhost01.example.com
+
+      - name: ansible-lint
+        if: always()
+        run: ansible-lint

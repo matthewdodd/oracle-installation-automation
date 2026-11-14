@@ -1,0 +1,11 @@
+---
+# Target profile for release is "production" (resolution plan step 23).
+profile: production
+
+exclude_paths:
+  - .venv/
+  - .ansible/
+  - .github/
+  - collections/ansible_collections/
+
+# Fix findings rather than adding skip_list / warn_list entries to make CI green.
