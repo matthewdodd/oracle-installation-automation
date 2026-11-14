@@ -1,0 +1,15 @@
+# Molecule test image (rendered by the docker driver for each platform image in molecule.yml).
+# A RHEL-compatible base with what Ansible and the playbook need on a target: a Python that ansible-core
+# 2.22 supports (>= 3.9: python3.11 on release 8, the platform python3 on release 9), sudo for become,
+# expect for the root-wrapper dialogue, GNU tar/gzip for unarchive, and getent/gpasswd (glibc-common,
+# shadow-utils). coreutils is not listed: the base images ship coreutils-single, which conflicts with it.
+# The Oracle prerequisite packages are installed by prepare.yml from the role's own per-OS list, so the
+# image does not repeat that list.
+FROM {{ item.image }}
+
+RUN . /etc/os-release \
+    && case "$VERSION_ID" in 8*) python_package=python3.11 ;; *) python_package=python3 ;; esac \
+    && dnf --assumeyes --setopt=install_weak_deps=False install "$python_package" sudo expect tar gzip \
+         findutils procps-ng hostname which shadow-utils glibc-common diffutils \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf

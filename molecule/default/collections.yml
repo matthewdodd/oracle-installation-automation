@@ -1,0 +1,9 @@
+---
+# Collections for the Molecule docker driver only (installed by Molecule's galaxy dependency step).
+# The playbook itself needs none (collections/requirements.yml).
+collections:
+  - name: community.docker
+    version: "5.4.0"
+  # The driver's create playbook copies the Dockerfile build context with ansible.posix.synchronize.
+  - name: ansible.posix
+    version: "2.2.2"

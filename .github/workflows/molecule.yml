@@ -1,0 +1,49 @@
+name: Molecule
+
+# End-to-end test of the playbook in RHEL-compatible containers with stub Oracle software
+# (molecule/default/; resolution plan step 25). Runs on pull requests that change the automation.
+on:
+  pull_request:
+    paths:
+      - "roles/**"
+      - "oracle_database_install.yml"
+      - "notification.yml"
+      - "molecule/**"
+      - "requirements.txt"
+      - "requirements-test.txt"
+      - ".github/workflows/molecule.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: molecule-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  molecule:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.15"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-test.txt
+
+      - name: Install test tooling
+        run: pip install -r requirements-test.txt
+
+      - name: shellcheck the test stubs
+        run: shellcheck molecule/default/files/*.bash molecule/default/files/stubs/*
+
+      - name: molecule test
+        run: molecule test --scenario-name default
+        env:
+          PY_COLORS: "1"
+          ANSIBLE_FORCE_COLOR: "1"

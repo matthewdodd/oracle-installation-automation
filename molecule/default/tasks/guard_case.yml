@@ -1,0 +1,39 @@
+---
+# One production-host guard case for verify.yml (loop variable molecule_guard_case):
+#   name         label
+#   oracle_home  ORACLE_HOME for the attempt (oracle_database_install_role_oracle_home)
+#   env_file     environment file for the attempt (oracle_common_env_file, i.e. <site prefix>/<DATABASE_NAME>.env)
+#   expect       text the refusal message must contain
+# Runs the role's real, read-only preflight (the checks the playbook's Initialize stage runs) and
+# asserts that it refuses. roles/oracle_common must have run in the play first.
+- name: Attempt an install that must be refused - {{ molecule_guard_case.name }}
+  # Shared input of both roles (roles/oracle_common), so it is set for the block, not as a role variable.
+  vars:
+    oracle_common_env_file: "{{ molecule_guard_case.env_file }}"
+  block:
+    - name: Run the install preflight - {{ molecule_guard_case.name }}
+      ansible.builtin.include_role:
+        name: oracle_database_install_role
+        tasks_from: preflight
+      vars:
+        oracle_database_install_role_oracle_home: "{{ molecule_guard_case.oracle_home }}"
+
+    - name: Record that the preflight did not refuse - {{ molecule_guard_case.name }}
+      ansible.builtin.set_fact:
+        molecule_guard_refused: false
+        molecule_guard_message: ""
+  rescue:
+    - name: Record the refusal - {{ molecule_guard_case.name }}
+      ansible.builtin.set_fact:
+        molecule_guard_refused: true
+        molecule_guard_message: "{{ ansible_failed_result.msg | default('') | string }}"
+
+- name: Check the guard refused - {{ molecule_guard_case.name }}
+  ansible.builtin.assert:
+    that:
+      - molecule_guard_refused | bool
+      - molecule_guard_case.expect in molecule_guard_message
+    fail_msg: >-
+      Expected the preflight to refuse ({{ molecule_guard_case.name }}) with a message containing
+      '{{ molecule_guard_case.expect }}'; refused={{ molecule_guard_refused }}, message='{{ molecule_guard_message }}'.
+    success_msg: "Refused as expected: {{ molecule_guard_message | truncate(200) }}"

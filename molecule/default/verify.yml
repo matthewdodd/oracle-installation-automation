@@ -1,0 +1,320 @@
+---
+# Checks what converge.yml did on every host, then that the production-host guards refuse, then that a
+# second converge changes nothing. Read-only on the hosts.
+- name: Verify the Oracle Database binary installation
+  hosts: molecule_oracle
+  vars:
+    # Required by the oracle_common argument spec (imported below for the guard checks).
+    target: "{{ inventory_hostname }}"
+    molecule_side_by_side: "{{ inventory_hostname in groups['side_by_side'] | default([]) }}"
+    molecule_oracle_base: "{{ mountpoint }}/{{ db_owner }}"
+    molecule_env_file: "{{ oracle_common_site_prefix }}/{{ DATABASE_NAME }}.env"
+    molecule_staging_base: "{{ molecule_oracle_base }}/ansible_staging"
+    molecule_output_dir: "{{ molecule_staging_base }}/oracle_database_install_{{ DATABASE_NAME }}"
+    # The env file keeps the original "$ORACLE_BASE/product/<version>" form for the default home path.
+    molecule_env_oracle_home: >-
+      {{ '$ORACLE_BASE/product/' ~ database_version
+         if molecule_expected_oracle_home == molecule_oracle_base ~ '/product/' ~ database_version
+         else molecule_expected_oracle_home }}
+    molecule_check_files:
+      pointer: /etc/oraInst.loc
+      inventory_xml: "{{ molecule_expected_inventory }}/ContentsXML/inventory.xml"
+      env_file: "{{ molecule_env_file }}"
+      installer_args: "{{ molecule_expected_oracle_home }}/install/molecule_runinstaller.args"
+      response_file: "{{ molecule_expected_oracle_home }}/install/molecule_response.rsp"
+      root_sh_done: "{{ molecule_expected_oracle_home }}/install/molecule_root_sh.done"
+      opatch_version: "{{ molecule_expected_oracle_home }}/OPatch/version.txt"
+      opatch_old_version: "{{ molecule_expected_oracle_home }}/OPatch.old/version.txt"
+      install_status: "{{ molecule_output_dir }}/install_status.txt"
+      opatch_status: "{{ molecule_output_dir }}/opatch_status.txt"
+      opatch_jvm_status: "{{ molecule_output_dir }}/opatch_jvm_status.txt"
+    # Install attempts the guards must refuse (tasks/guard_case.yml).
+    molecule_guard_cases: >-
+      {{ [{'name': 'the ORACLE_HOME this run installed', 'oracle_home': molecule_expected_oracle_home,
+           'env_file': molecule_env_file, 'expect': 'already exists and is not empty'}]
+         + ([{'name': 'the ORACLE_HOME of the existing installation', 'oracle_home': molecule_existing_oracle_home,
+              'env_file': molecule_env_file, 'expect': 'already exists and is not empty'},
+             {'name': 'the environment file of the existing database (with a new home)',
+              'oracle_home': molecule_oracle_base ~ '/product/guard_check_not_created',
+              'env_file': oracle_common_site_prefix ~ '/' ~ molecule_existing_database ~ '.env',
+              'expect': 'already exists with different content'}]
+            if molecule_side_by_side | bool else []) }}
+  tasks:
+    # --- ORACLE_HOME ----------------------------------------------------------------------------
+    - name: Inspect the Oracle home
+      ansible.builtin.stat:
+        path: "{{ molecule_expected_oracle_home }}"
+      register: molecule_home
+
+    - name: Check the Oracle home was created for the software owner
+      ansible.builtin.assert:
+        that:
+          - molecule_home.stat.isdir | default(false)
+          - molecule_home.stat.pw_name == db_owner
+          - molecule_home.stat.mode == '0755'
+        fail_msg: "{{ molecule_expected_oracle_home }}: {{ molecule_home.stat }}"
+
+    - name: Read the files the run produced
+      ansible.builtin.slurp:
+        src: "{{ item.value }}"
+      loop: "{{ molecule_check_files | dict2items }}"
+      loop_control:
+        label: "{{ item.value }}"
+      register: molecule_slurp
+
+    - name: Decode the files the run produced
+      ansible.builtin.set_fact:
+        molecule_content: >-
+          {{ dict(molecule_slurp.results | map(attribute='item.key')
+                  | zip(molecule_slurp.results | map(attribute='content') | map('b64decode'))) }}
+
+    - name: Check the installer ran without -ignorePrereq and with the expected response file
+      ansible.builtin.assert:
+        that:
+          - "'-silent' in molecule_content.installer_args.split()"
+          - "'-ignorePrereq' not in molecule_content.installer_args.split()"
+          - (molecule_rsp_expected | difference(molecule_content.response_file.splitlines())) | length == 0
+        fail_msg: >-
+          args: {{ molecule_content.installer_args | trim }};
+          missing response file lines: {{ molecule_rsp_expected | difference(molecule_content.response_file.splitlines()) }}
+      vars:
+        molecule_rsp_expected:
+          - oracle.install.responseFileVersion=/oracle/install/rspfmt_dbinstall_response_schema_v19.0.0
+          - oracle.install.db.rootconfig.executeRootScript=false
+          - oracle.install.db.InstallEdition=EE
+          - oracle.install.option=INSTALL_DB_SWONLY
+          - INVENTORY_LOCATION={{ molecule_expected_inventory }}
+          - UNIX_GROUP_NAME={{ molecule_expected_inventory_group }}
+          - ORACLE_HOME={{ molecule_expected_oracle_home }}
+          - ORACLE_BASE={{ molecule_oracle_base }}
+          - oracle.install.db.OSDBA_GROUP={{ molecule_expected_inventory_group }}
+
+    - name: Inspect the root.sh record
+      ansible.builtin.stat:
+        path: "{{ molecule_check_files.root_sh_done }}"
+      register: molecule_root_sh_done
+
+    - name: Check root.sh ran as root, method {{ oracle_common_root_script_method | default(oracle_root_script_method | default('wrapper')) }}
+      ansible.builtin.assert:
+        that:
+          - molecule_root_sh_done.stat.pw_name == 'root'
+          - "'ran_as=root' in molecule_content.root_sh_done.splitlines()"
+          # The question root.sh asked was answered with its default.
+          - "'local_bin=/usr/local/bin' in molecule_content.root_sh_done.splitlines()"
+        fail_msg: "{{ molecule_content.root_sh_done }}"
+
+    - name: Check the installer log ends with the success line
+      ansible.builtin.assert:
+        that: "'Successfully Setup Software' in (molecule_content.install_status | trim).splitlines() | last"
+        fail_msg: "{{ molecule_content.install_status }}"
+
+    # --- Central inventory ------------------------------------------------------------------------
+    - name: Inspect the central inventory pointer and directory
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/oraInst.loc
+        - "{{ molecule_expected_inventory }}"
+      register: molecule_inventory_stat
+
+    - name: Check the central inventory pointer was created on the clean target
+      when: not molecule_side_by_side | bool
+      ansible.builtin.assert:
+        that:
+          - molecule_content.pointer == ('inst_group=' ~ molecule_expected_inventory_group ~ '\ninventory_loc=' ~ molecule_expected_inventory ~ '\n')
+          - molecule_inventory_stat.results[0].stat.mode == '0644'
+          - molecule_inventory_stat.results[0].stat.gr_name == molecule_expected_inventory_group
+          - molecule_inventory_stat.results[1].stat.isdir
+          - molecule_inventory_stat.results[1].stat.pw_name == db_owner
+          - molecule_inventory_stat.results[1].stat.gr_name == molecule_expected_inventory_group
+          - molecule_inventory_stat.results[1].stat.mode == '0770'
+        fail_msg: "pointer: {{ molecule_content.pointer }}; stat: {{ molecule_inventory_stat.results | map(attribute='stat') | list }}"
+
+    - name: Check the existing central inventory pointer was reused untouched (side-by-side)
+      when: molecule_side_by_side | bool
+      ansible.builtin.assert:
+        that:
+          - molecule_content.pointer == ('inventory_loc=' ~ molecule_existing_inventory ~ '\ninst_group=oinstall\n')
+          - molecule_inventory_stat.results[0].stat.mode == '0644'
+        fail_msg: "pointer: {{ molecule_content.pointer }}"
+
+    - name: Check the new home is registered in the central inventory
+      ansible.builtin.assert:
+        that:
+          - ('LOC="' ~ molecule_expected_oracle_home ~ '"') in molecule_content.inventory_xml
+          - (not molecule_side_by_side | bool) or (('LOC="' ~ molecule_existing_oracle_home ~ '"') in molecule_content.inventory_xml)
+        fail_msg: "{{ molecule_content.inventory_xml }}"
+
+    # --- Environment file -------------------------------------------------------------------------
+    - name: Inspect the environment file
+      ansible.builtin.stat:
+        path: "{{ molecule_env_file }}"
+      register: molecule_env_stat
+
+    - name: Source the environment file
+      ansible.builtin.command:
+        argv:
+          - /bin/bash
+          - -c
+          - . "$1" && printf '%s\n' "$ORACLE_SID" "$ORACLE_BASE" "$ORACLE_HOME" "$PATH"
+          - molecule-env-check
+          - "{{ molecule_env_file }}"
+      register: molecule_env_sourced
+      changed_when: false
+
+    - name: Check the environment file content
+      ansible.builtin.assert:
+        that:
+          - molecule_env_stat.stat.mode == '0755'
+          - ('ORACLE_SID=' ~ DATABASE_NAME ~ '; export ORACLE_SID') in molecule_env_lines
+          - ('ORACLE_BASE=' ~ molecule_oracle_base ~ '; export ORACLE_BASE') in molecule_env_lines
+          - ('ORACLE_HOME=' ~ molecule_env_oracle_home ~ '; export ORACLE_HOME') in molecule_env_lines
+          - "'NLS_LANG=american_america.AL32UTF8; export NLS_LANG' in molecule_env_lines"
+          - molecule_env_sourced.stdout_lines[:3] == [DATABASE_NAME, molecule_oracle_base, molecule_expected_oracle_home]
+          # Secure default: the current directory is not on PATH (oracle_database_install_role_env_path_include_cwd).
+          - "'.' not in molecule_env_sourced.stdout_lines[3].split(':')"
+          - "'' not in molecule_env_sourced.stdout_lines[3].split(':')"
+          - (molecule_expected_oracle_home ~ '/OPatch') in molecule_env_sourced.stdout_lines[3].split(':')
+        fail_msg: "{{ molecule_content.env_file }} / sourced: {{ molecule_env_sourced.stdout_lines }}"
+      vars:
+        molecule_env_lines: "{{ molecule_content.env_file.splitlines() }}"
+
+    # --- Patches ------------------------------------------------------------------------------------
+    - name: List the patches in the new home
+      become: true
+      become_user: "{{ db_owner }}"
+      ansible.builtin.command:
+        argv: ["{{ molecule_expected_oracle_home }}/OPatch/opatch", lspatches]
+      register: molecule_lspatches
+      changed_when: false
+
+    - name: Check the Release Update and the OJVM patch are applied, with the upgraded OPatch
+      ansible.builtin.assert:
+        that:
+          - (molecule_lspatches.stdout_lines | select('match', molecule_db_ru_id ~ ';') | list | length) == 1
+          - (molecule_lspatches.stdout_lines | select('match', molecule_ojvm_id ~ ';') | list | length) == 1
+          - molecule_content.opatch_version | trim == 'OPATCH_VERSION:' ~ molecule_new_opatch_version
+          - molecule_content.opatch_old_version | trim == 'OPATCH_VERSION:' ~ molecule_old_opatch_version
+          - "'OPatch succeeded' in (molecule_content.opatch_status | trim).splitlines() | last"
+          - "'OPatch succeeded' in (molecule_content.opatch_jvm_status | trim).splitlines() | last"
+        fail_msg: "lspatches: {{ molecule_lspatches.stdout_lines }}; OPatch: {{ molecule_content.opatch_version | trim }}"
+
+    # --- Cleanup and group membership ---------------------------------------------------------------
+    - name: Inspect the staging directories
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ oracle_common_site_prefix }}/software/{{ DATABASE_NAME }}_{{ database_version }}"
+        - "{{ molecule_staging_base }}/ora_ansible_scripts_{{ DATABASE_NAME }}"
+        - "{{ molecule_output_dir }}"
+      register: molecule_staging_stat
+
+    - name: Check the software and script staging were removed and the logs kept
+      ansible.builtin.assert:
+        that:
+          - not molecule_staging_stat.results[0].stat.exists
+          - not molecule_staging_stat.results[1].stat.exists
+          - molecule_staging_stat.results[2].stat.isdir | default(false)
+          - molecule_staging_stat.results[2].stat.pw_name | default('') == db_owner
+          - not molecule_staging_stat.results[2].stat.woth | default(true)
+        fail_msg: "{{ molecule_staging_stat.results | map(attribute='stat') | list }}"
+
+    - name: Look up the automation group
+      ansible.builtin.command:
+        argv: [getent, group, "{{ molecule_automation_group }}"]
+      register: molecule_group
+      changed_when: false
+
+    - name: Check db_owner and the privileged user joined the automation group
+      ansible.builtin.assert:
+        that:
+          - db_owner in molecule_members
+          - "'root' in molecule_members"
+        fail_msg: "{{ molecule_group.stdout }}"
+      vars:
+        molecule_members: "{{ molecule_group.stdout.split(':')[3].split(',') }}"
+
+    # --- Side-by-side: the existing installation is untouched -------------------------------------
+    - name: Check the existing installation is byte-for-byte unchanged
+      when: molecule_side_by_side | bool
+      ansible.builtin.command:
+        argv: [sha256sum, --check, --strict, /root/molecule_existing_installation.sha256]
+      changed_when: false
+
+    # --- Guards and idempotence ---------------------------------------------------------------------
+    # Everything below must leave the hosts exactly as they are: compared at the end.
+    - name: Record the host state before the guard checks and the second converge
+      ansible.builtin.include_tasks: tasks/snapshot.yml
+      vars:
+        molecule_snapshot_name: before
+
+    # Static import, as in the playbook, so the shared defaults and patterns are visible to the preflight below.
+    - name: Load the platform variables and validate the inputs (read-only)
+      ansible.builtin.import_role:
+        name: oracle_common
+
+    - name: Check the production-host guards refuse
+      ansible.builtin.include_tasks: tasks/guard_case.yml
+      loop: "{{ molecule_guard_cases }}"
+      loop_control:
+        loop_var: molecule_guard_case
+        label: "{{ molecule_guard_case.name }}"
+
+    # Idempotence (replaces Molecule's built-in step, see molecule.yml): the same converge again, with the
+    # same inventory and configuration. It must be refused by the guard on every host, report changed=0,
+    # and leave every file as it was.
+    - name: Run converge.yml a second time
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python | dirname }}/ansible-playbook"
+          - --inventory
+          - "{{ lookup('ansible.builtin.env', 'MOLECULE_INVENTORY_FILE') }}"
+          - "{{ lookup('ansible.builtin.env', 'MOLECULE_SCENARIO_DIRECTORY') }}/converge.yml"
+      environment:
+        ANSIBLE_NOCOLOR: "1"
+        ANSIBLE_FORCE_COLOR: "0"
+      delegate_to: localhost
+      run_once: true
+      register: molecule_second_converge
+      changed_when: false
+      failed_when: false
+
+    - name: Show the end of the second converge
+      ansible.builtin.debug:
+        msg: "{{ molecule_second_converge.stdout_lines[-25:] }}"
+      run_once: true
+
+    - name: Check the second converge was refused by the guard without changes
+      ansible.builtin.assert:
+        that:
+          - molecule_second_converge.rc == 2
+          - molecule_recap | length == 3
+          - molecule_recap[0] == '0'
+          - molecule_recap[1] == '0'
+          - molecule_recap[2] == '1'
+          - ('Initialize failed on ' ~ inventory_hostname ~ " in task 'Refuse to install over an existing ORACLE_HOME'")
+            in molecule_output
+        fail_msg: >-
+          Expected rc 2 and "{{ inventory_hostname }} : ... changed=0 unreachable=0 failed=1" with the ORACLE_HOME guard
+          message; got rc {{ molecule_second_converge.rc }}, recap (changed, unreachable, failed) {{ molecule_recap }}.
+      vars:
+        # Whitespace collapsed and YAML-doubled quotes undone: the callback may wrap long messages.
+        molecule_output: "{{ molecule_second_converge.stdout | regex_replace('\\s+', ' ') | replace(\"''\", \"'\") }}"
+        molecule_recap: >-
+          {{ molecule_second_converge.stdout
+             | regex_search('(?m)^' ~ (inventory_hostname | regex_escape) ~ '\s*:\s*ok=\d+\s+changed=(\d+)\s+unreachable=(\d+)\s+failed=(\d+)',
+                            '\1', '\2', '\3')
+             | default([], true) }}
+
+    - name: Record the host state after the guard checks and the second converge
+      ansible.builtin.include_tasks: tasks/snapshot.yml
+      vars:
+        molecule_snapshot_name: after
+
+    - name: Check nothing changed on the host
+      ansible.builtin.assert:
+        that: molecule_snapshots.before == molecule_snapshots.after
+        fail_msg: >-
+          The host changed (path|type|mode|owner|group|size|mtime, or digest):
+          {{ (molecule_snapshots.before | symmetric_difference(molecule_snapshots.after))[:20] }}
+        success_msg: "Unchanged: {{ molecule_snapshots.after | length }} entries"

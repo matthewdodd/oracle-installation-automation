@@ -1,0 +1,53 @@
+#!/bin/bash
+#
+# TEST STUB. Molecule stand-in for a site root wrapper (oracle_common_root_wrapper_path), installed by
+# prepare.yml on the instances that use oracle_common_root_script_method: wrapper. It shows the menu
+# dialogue the role's files/root_wrapper.exp drives:
+#   Enter your Selection        <- 1   (Oracle menu)
+#   Enter your Selection        <- 1   (run root.sh)
+#   Enter the PATH to root.sh   <- directory; <directory>/root.sh then runs as root (its questions
+#                                  pass through to the caller)
+#   Press ENTER to continue...  <- ENTER
+#   Enter your Selection        <- x   (leave; exit status 0, or root.sh's status if it did not succeed)
+set -u
+
+if [[ "$(id -u)" -ne 0 ]]; then
+  echo "The root wrapper must run as root (test stub)."
+  exit 1
+fi
+
+status=0
+
+menu () {
+  echo ""
+  echo "  Site root wrapper (test stub)"
+  echo "  1) $1"
+  echo "  x) Leave"
+  printf 'Enter your Selection: '
+}
+
+menu "Oracle"
+read -r selection || exit 3
+[[ "$selection" == "1" ]] || { echo "Unknown selection '$selection'"; exit 4; }
+
+menu "Run root.sh"
+read -r selection || exit 3
+[[ "$selection" == "1" ]] || { echo "Unknown selection '$selection'"; exit 4; }
+
+printf 'Enter the PATH to root.sh: '
+read -r root_dir || exit 3
+if [[ "$root_dir" != /* || ! -x "$root_dir/root.sh" ]]; then
+  echo "No executable root.sh in '$root_dir'"
+  status=6
+else
+  "$root_dir/root.sh"
+  status=$?
+fi
+
+printf 'Press ENTER to continue...'
+read -r _ || exit 3
+
+menu "Oracle"
+read -r selection || exit 3
+[[ "$selection" == "x" ]] || { echo "Unknown selection '$selection'"; exit 4; }
+exit "$status"

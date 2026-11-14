@@ -1,0 +1,8 @@
+---
+# Runs the unmodified playbook against every test host, as an AAP job template would: target is the
+# comma-separated host list (here all hosts of molecule_oracle) and every other input comes from the
+# inventory (molecule.yml). verify.yml runs this file a second time to check idempotence.
+- name: Install the Oracle Database binaries (stub artifacts)
+  ansible.builtin.import_playbook: ../../oracle_database_install.yml
+  vars:
+    target: "{{ groups['molecule_oracle'] | join(',') }}"

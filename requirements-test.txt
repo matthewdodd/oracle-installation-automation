@@ -1,0 +1,11 @@
+# Test tooling: the controller/CI tooling plus Molecule with the docker driver (molecule/default/).
+# Install into a virtual environment, never into the system Python:
+#   python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements-test.txt
+# Needs a Docker engine and rsync on the machine that runs `molecule test`. The driver's collections are
+# pinned in molecule/default/collections.yml and installed by Molecule itself.
+-r requirements.txt
+molecule==26.10.0
+molecule-plugins[docker]==26.10.12
+# Pulled in by the docker extra; pinned for reproducible runs.
+docker==7.2.0
+requests==2.34.2
