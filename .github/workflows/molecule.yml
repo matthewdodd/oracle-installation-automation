@@ -2,17 +2,14 @@
 name: Molecule
 
 # End-to-end test of the playbook in RHEL-compatible containers with stub Oracle software
-# (molecule/default/; resolution plan step 25). Runs on pull requests that change the automation.
+# (molecule/default/; resolution plan step 25). Runs on every pull request, with no paths filter: the
+# "molecule" check is required by main's branch protection, so it must report on every PR, including
+# docs-only ones (a run takes about 4-5 minutes). Also runs on push to main, so main's own status is
+# visible after each merge, and on demand.
 on:
   pull_request:
-    paths:
-      - "roles/**"
-      - "oracle_database_install.yml"
-      - "notification.yml"
-      - "molecule/**"
-      - "requirements.txt"
-      - "requirements-test.txt"
-      - ".github/workflows/molecule.yml"
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:

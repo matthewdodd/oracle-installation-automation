@@ -120,6 +120,9 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
     `collections/requirements.yml`;
   - `.yamllint`, `.ansible-lint` (production profile, no skips), `.gitignore`;
   - GitHub Actions CI (yamllint, shellcheck, syntax-check, ansible-lint, mode regression test).
+  - GitHub Actions Molecule workflow (`.github/workflows/molecule.yml`). It runs on every pull request,
+    with no paths filter, so the required `molecule` check reports even on docs-only PRs. It also runs on
+    push to `main` and on demand.
 - `inventory/example/` with documented group_vars and a `vault.yml.example`. It covers per-environment
   vault ids and rekey rotation.
 - `tests/mode_validation.yml`, a controller-only permission-mode regression test.

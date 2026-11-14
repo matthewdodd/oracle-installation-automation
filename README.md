@@ -669,8 +669,10 @@ ansible-lint                                   # production profile, no skips
 ansible-playbook -i localhost, tests/mode_validation.yml    # permission-mode regression test, controller only
 ```
 
-Molecule scenarios live under `molecule/`, and their CI workflow is `.github/workflows/molecule.yml`. To
-run them locally (the scenarios need a container runtime or VMs, as configured in each scenario):
+Molecule scenarios live under `molecule/`, and their CI workflow is `.github/workflows/molecule.yml`. It
+runs on every pull request (no paths filter, because `lint` and `molecule` are required checks on `main`),
+on push to `main`, and on demand. To run them locally (the scenarios need a container runtime or VMs, as
+configured in each scenario):
 
 ```bash
 pip install -r requirements-test.txt
