@@ -1,3 +1,4 @@
+---
 name: Molecule
 
 # End-to-end test of the playbook in RHEL-compatible containers with stub Oracle software

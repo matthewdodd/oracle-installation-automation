@@ -5,7 +5,6 @@ ignore: |
   .venv/
   .ansible/
   collections/ansible_collections/
-  .github/
 
 rules:
   line-length:

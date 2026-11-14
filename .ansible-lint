@@ -5,7 +5,6 @@ profile: production
 exclude_paths:
   - .venv/
   - .ansible/
-  - .github/
   - collections/ansible_collections/
 
 # Used only by ansible-lint's own syntax check of the playbook: play 2 targets "{{ target }}", which is a

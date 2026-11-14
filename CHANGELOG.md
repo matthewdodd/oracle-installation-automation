@@ -150,6 +150,8 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
 - The install role preflight uses the shared `..` path rule (`__oracle_common_re_dotdot`) for every path it
   checks, instead of its own copies. A leading or bare `..` is now also reported as a `..` component (such
   paths were already rejected as not absolute). `tests/mode_validation.yml` covers these checks.
+- `yamllint` and `ansible-lint` now also check `.github/` (the CI workflows and `.github/dependabot.yml`).
+  The yamllint rules are unchanged; the workflows gained the `---` document start marker.
 
 ### Removed
 
