@@ -1,0 +1,144 @@
+---
+# Called from the playbook's install rescue. Removes only what this run created, as recorded in
+# oracle_database_install_role_created by preflight.yml, main.yml, inventory.yml and env_file.yml:
+#   home           ORACLE_HOME directory created by this run      -> removed
+#   home_contents  ORACLE_HOME was an empty, pre-existing directory -> its content is removed, the directory kept
+#   env_file / inventory_pointer / inventory_dir created by this run -> removed
+# A pre-existing (non-empty) ORACLE_HOME, central inventory or environment file is never touched.
+# When the failed home is registered in a central inventory this run did not create, it is first
+# detached (runInstaller -detachHome); if that is not possible the home is kept and a warning shown.
+# Best effort: a rollback problem is reported as a WARNING and never hides the original failure.
+
+- name: Roll back what the failed run created
+  when:
+    - oracle_database_install_role_rollback_on_failure | bool
+    - (oracle_database_install_role_created | default({})) | dict2items | selectattr('value') | list | length > 0
+  become: true
+  become_user: "{{ b_user }}"
+  vars:
+    __oracle_database_install_role_owns_home: >-
+      {{ (oracle_database_install_role_created.home | default(false)) or (oracle_database_install_role_created.home_contents | default(false)) }}
+    __oracle_database_install_role_inventory_xml: >-
+      {{ (oracle_database_install_role_safety.inventory_location | default('')) ~ '/ContentsXML/inventory.xml' }}
+  block:
+    - name: Report the rollback
+      ansible.builtin.debug:
+        msg: >-
+          Rolling back after a failed install. Created by this run:
+          {{ oracle_database_install_role_created | dict2items | selectattr('value') | map(attribute='key') | join(', ') }}.
+
+    - name: Check whether the failed home is registered in a central inventory this run did not create
+      when:
+        - __oracle_database_install_role_owns_home | bool
+        - not (oracle_database_install_role_created.inventory_dir | default(false))
+      ansible.builtin.command:
+        argv: [grep, -F, -q, -e, 'LOC="{{ oracle_home }}"', "{{ __oracle_database_install_role_inventory_xml }}"]
+      register: oracle_database_install_role_home_registered
+      changed_when: false
+      check_mode: false
+      failed_when: false
+
+    - name: Look for the installer that can detach the failed home
+      when: (oracle_database_install_role_home_registered.rc | default(1)) == 0
+      ansible.builtin.stat:
+        path: "{{ oracle_home }}/oui/bin/runInstaller"
+        get_checksum: false
+      register: oracle_database_install_role_detach_tool
+
+    - name: Detach the failed home from the central inventory
+      when:
+        - (oracle_database_install_role_home_registered.rc | default(1)) == 0
+        - oracle_database_install_role_detach_tool.stat.exists | default(false)
+      become: true
+      become_user: "{{ db_owner }}"
+      ansible.builtin.command:
+        argv:
+          - "{{ oracle_home }}/oui/bin/runInstaller"
+          - -silent
+          - -waitforcompletion
+          - -detachHome
+          - ORACLE_HOME={{ oracle_home }}
+      register: oracle_database_install_role_detach
+      changed_when: oracle_database_install_role_detach.rc == 0
+      failed_when: false
+
+    - name: Decide whether the failed home can be removed
+      ansible.builtin.set_fact:
+        oracle_database_install_role_home_removable: >-
+          {{ (__oracle_database_install_role_owns_home | bool)
+             and ((oracle_database_install_role_home_registered.rc | default(1)) != 0
+                  or (oracle_database_install_role_detach.rc | default(1)) == 0) }}
+
+    - name: Warn that the failed home is kept
+      when:
+        - __oracle_database_install_role_owns_home | bool
+        - not (oracle_database_install_role_home_removable | bool)
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: {{ oracle_home }} is registered in the central inventory {{ oracle_database_install_role_safety.inventory_location }}
+          and could not be detached, so it was kept. Detach it (runInstaller -detachHome ORACLE_HOME={{ oracle_home }})
+          and remove it manually before retrying.
+
+    - name: Remove the ORACLE_HOME created by this run
+      when:
+        - oracle_database_install_role_home_removable | bool
+        - oracle_database_install_role_created.home | default(false)
+      ansible.builtin.file:
+        path: "{{ oracle_home }}"
+        state: absent
+
+    - name: List the content added to the pre-existing empty ORACLE_HOME
+      when:
+        - oracle_database_install_role_home_removable | bool
+        - oracle_database_install_role_created.home_contents | default(false)
+      ansible.builtin.find:
+        paths: "{{ oracle_home }}"
+        file_type: any
+        hidden: true
+        recurse: false
+      register: oracle_database_install_role_home_added
+
+    - name: Empty the pre-existing ORACLE_HOME again
+      when:
+        - oracle_database_install_role_home_removable | bool
+        - oracle_database_install_role_created.home_contents | default(false)
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ oracle_database_install_role_home_added.files | default([]) }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+    - name: Remove the environment file created by this run
+      when: oracle_database_install_role_created.env_file | default(false)
+      ansible.builtin.file:
+        path: "{{ oracle_common_env_file }}"
+        state: absent
+
+    - name: Remove the central inventory pointer created by this run
+      when: oracle_database_install_role_created.inventory_pointer | default(false)
+      ansible.builtin.file:
+        path: "{{ oracle_common_inventory_pointer_file }}"
+        state: absent
+
+    - name: Remove the central inventory directory created by this run
+      when: oracle_database_install_role_created.inventory_dir | default(false)
+      ansible.builtin.file:
+        path: "{{ oracle_database_install_role_safety.inventory_location }}"
+        state: absent
+
+    - name: Clear the record of what this run created
+      ansible.builtin.set_fact:
+        oracle_database_install_role_created:
+          home: false
+          home_contents: false
+          inventory_pointer: false
+          inventory_dir: false
+          env_file: false
+  rescue:
+    - name: Report the rollback problem
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: rollback did not complete ({{ ansible_failed_task.name | default('unknown task') }}:
+          {{ ansible_failed_result.msg | default('no message') }}). Check {{ oracle_home }},
+          {{ oracle_common_env_file }} and {{ oracle_common_inventory_pointer_file }} manually.

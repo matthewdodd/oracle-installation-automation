@@ -29,6 +29,19 @@ oracle_common_group_name: oracle_automation
 # oracle_common_artifactory_ca_path: /etc/pki/ca-trust/source/anchors/example-ca.pem
 # oracle_common_artifactory_use_proxy: false
 
+# --- Clean target / side-by-side install (roles/oracle_database_install_role/defaults/main.yml) ---
+# An existing non-empty ORACLE_HOME or a different <DB>.env is refused unless forced. Prefer a
+# per-job extra var (-e oracle_force_reinstall=true) over setting this for a whole group.
+# oracle_database_install_role_force_reinstall: false
+# Side-by-side install of a release that is already installed: give the new home its own path.
+# oracle_home: /u01/oracle/product/19.0.0.0_2
+# Central inventory: an existing /etc/oraInst.loc is always reused and never rewritten. On a
+# clean target it is created for <mountpoint>/<db_owner>/oraInventory unless set here.
+# oracle_database_install_role_new_inventory_location: /u01/app/oraInventory
+# oracle_database_install_role_inventory_group: oinstall
+# Keep what a failed run created, for troubleshooting (default: remove it).
+# oracle_database_install_role_rollback_on_failure: true
+
 # --- Secrets (Ansible Vault) --------------------------------------------------------------
 # Keep secrets in an encrypted vault.yml next to this file; see vault.yml.example. Map them here
 # once vault.yml exists (uncomment). In AAP, a custom credential type can inject the same names.

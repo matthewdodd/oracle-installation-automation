@@ -9,3 +9,5 @@ __oracle_common_group_add_command: /usr/bin/chgrpmem -m +
 __oracle_common_run_rootpre: true
 __oracle_common_package_manager: ""
 __oracle_common_prereq_packages: []
+# Central inventory pointer file (Oracle's oraInst.loc location on this platform).
+__oracle_common_inventory_pointer_file: /etc/oraInst.loc

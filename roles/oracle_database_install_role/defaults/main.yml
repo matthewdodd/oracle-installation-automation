@@ -5,9 +5,43 @@
 # Run oracle_common before this role. Every value below can be overridden.
 
 # Install layout
-oracle_home: "{{ mountpoint }}/{{ db_owner }}/product/{{ database_version }}"
+# ORACLE_BASE written to the environment file (original layout: <mountpoint>/<db_owner>).
+oracle_database_install_role_oracle_base: "{{ mountpoint }}/{{ db_owner }}"
+# ORACLE_HOME. The default keeps the original layout <mountpoint>/<db_owner>/product/<database_version>.
+# Set a different path for a side-by-side install of a release that is already installed on the
+# host, e.g. /u01/oracle/product/19.0.0.0_2.
+oracle_home: "{{ oracle_database_install_role_oracle_base }}/product/{{ database_version }}"
 patch_folder_prefix: "{{ oracle_common_site_prefix }}"
-install_folder_name: "{{ patch_folder_prefix }}/software/{{ database_version }}"
+# Per-database software staging directory. Cleanup removes only this directory, so runs for other
+# databases (even of the same release) never lose their files.
+install_folder_name: "{{ patch_folder_prefix }}/software/{{ DATABASE_NAME }}_{{ database_version }}"
+
+# --- Production-host safety (clean target or side-by-side next to existing Oracle software) ---
+# An existing, non-empty ORACLE_HOME is never installed over unless this is true. The short
+# name oracle_force_reinstall (e.g. an AAP survey variable) is accepted as an alias.
+oracle_database_install_role_force_reinstall: "{{ oracle_force_reinstall | default(false) }}"
+# An existing environment file (oracle_common_env_file) whose content differs from the one this
+# run would write is never replaced unless this is true. Follows the reinstall flag by default.
+oracle_database_install_role_force_env_file: "{{ oracle_database_install_role_force_reinstall }}"
+# Central inventory. When the pointer file (oracle_common_inventory_pointer_file, /etc/oraInst.loc)
+# exists, its inventory_loc and inst_group are reused and the file is never modified.
+# When it is absent (clean target), it is created from the values below.
+#   Empty: reuse the existing inventory, or create oracle_database_install_role_new_inventory_location.
+#   Set:   the inventory that must be used; the run fails if an existing pointer names another one.
+oracle_database_install_role_inventory_location: ""
+# Inventory created on a clean target (original layout: <mountpoint>/<db_owner>/oraInventory).
+oracle_database_install_role_new_inventory_location: "{{ oracle_database_install_role_oracle_base }}/oraInventory"
+# inst_group for a new pointer file. Empty: the primary group of db_owner (the original behaviour).
+# With an existing pointer, its inst_group is used; a different non-empty value fails the run.
+oracle_database_install_role_inventory_group: ""
+oracle_database_install_role_inventory_pointer_mode: "0644"
+oracle_database_install_role_inventory_dir_mode: "0770"
+# Mode of the environment file (the original ran chmod 0755 on it).
+oracle_database_install_role_env_file_mode: "0755"
+# After a failed install, remove what this run created: an ORACLE_HOME it created (or filled when
+# it was empty), and an environment file, inventory pointer or inventory directory it created.
+# Pre-existing homes, inventories and environment files are never removed.
+oracle_database_install_role_rollback_on_failure: true
 
 # Artifact repository: <oracle_common_artifactory_url>/<artf_ver>/<file>.
 # database_version is validated against oracle_common_artifactory_version_map (no fallback).

@@ -37,6 +37,14 @@
           ansible.builtin.import_role:
             name: oracle_common
 
+        # Read-only production-host safety checks, before anything is changed on the host: refuse an
+        # existing non-empty ORACLE_HOME or a different <DB>.env (unless forced) and decide whether the
+        # central inventory is reused (side-by-side) or created (clean target).
+        - name: Check the host is safe to install on
+          ansible.builtin.include_role:
+            name: oracle_database_install_role
+            tasks_from: preflight
+
         - name: Initialize
           ansible.builtin.import_role:
             name: initialization_role
@@ -60,6 +68,11 @@
           ansible.builtin.import_role:
             name: oracle_database_install_role
       rescue:
+        # Removes only what this run created (ORACLE_HOME, <DB>.env, central inventory); never pre-existing ones.
+        - name: Roll back the failed Oracle Database install
+          ansible.builtin.include_role:
+            name: oracle_database_install_role
+            tasks_from: rollback
         - name: Cleanup the Oracle Database install
           ansible.builtin.include_role:
             name: oracle_database_install_role

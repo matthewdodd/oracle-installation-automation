@@ -6,9 +6,16 @@ argument_specs:
     short_description: Download, install and patch Oracle Database software (software-only install).
     description:
       - Downloads the binaries for database_version from <oracle_common_artifactory_url>/<artf_ver>,
-        installs them into <mountpoint>/<db_owner>/product/<database_version>, runs root.sh through the
-        root wrapper, then applies the patch bundle patch_file_name.
-    options:
+        installs them into oracle_home (default <mountpoint>/<db_owner>/product/<database_version>), runs root.sh
+        through the root wrapper, then applies the patch bundle patch_file_name.
+      - Safe on a clean target and next to existing Oracle software (side-by-side). tasks/preflight.yml refuses an
+        existing non-empty ORACLE_HOME and a different existing environment file unless forced; the central inventory
+        pointer (oraInst.loc) is reused when present and created only when absent, never rewritten.
+      - Derived paths, overridable (templates of the inputs, so not listed as options) - oracle_database_install_role_oracle_base
+        (<mountpoint>/<db_owner>), oracle_home (<oracle_database_install_role_oracle_base>/product/<database_version>),
+        install_folder_name (<oracle_common_site_prefix>/software/<DATABASE_NAME>_<database_version>, per database) and
+        oracle_database_install_role_new_inventory_location (<oracle_database_install_role_oracle_base>/oraInventory).
+    options: &oracle_database_install_role_main_options
       DATABASE_NAME:
         type: str
         required: true
@@ -50,8 +57,59 @@ argument_specs:
       oracle_common_patch_file_name:
         type: str
         description: Pinned patch bundle file name; empty falls back to the date-derived name.
+      oracle_database_install_role_force_reinstall:
+        type: bool
+        description:
+          - Install over an existing, non-empty ORACLE_HOME (default false; such a home is refused).
+          - Defaults to oracle_force_reinstall, which is accepted as a short alias.
+      oracle_force_reinstall:
+        type: bool
+        description: Short alias of oracle_database_install_role_force_reinstall.
+      oracle_database_install_role_force_env_file:
+        type: bool
+        description: Replace an existing environment file whose content differs (defaults to the reinstall flag).
+      oracle_database_install_role_inventory_location:
+        type: str
+        description:
+          - Central inventory to use. Empty (default) reuses the inventory named by an existing oraInst.loc, or creates
+            oracle_database_install_role_new_inventory_location on a clean target. When set and oraInst.loc names another
+            inventory, the run fails (oraInst.loc is never rewritten).
+      oracle_database_install_role_inventory_group:
+        type: str
+        description:
+          - inst_group for a new oraInst.loc. Empty (default) uses the primary group of db_owner. With an existing
+            oraInst.loc its inst_group is used, and a different non-empty value fails the run.
+      oracle_database_install_role_inventory_pointer_mode:
+        type: str
+        description: Mode of a newly created oraInst.loc (default 0644).
+      oracle_database_install_role_inventory_dir_mode:
+        type: str
+        description: Mode of a newly created central inventory directory (default 0770).
+      oracle_database_install_role_env_file_mode:
+        type: str
+        description: Mode of the environment file (default 0755).
+      oracle_database_install_role_rollback_on_failure:
+        type: bool
+        description:
+          - After a failed install, remove what this run created (default true). Pre-existing homes, inventories and
+            environment files are never removed.
+  preflight:
+    short_description: Read-only production-host safety checks (ORACLE_HOME, central inventory, environment file).
+    description:
+      - Fails before anything changes when ORACLE_HOME exists and is not empty, or the environment file exists with other
+        content, unless forced. Works out the central inventory to reuse (side-by-side) or create (clean target).
+      - Sets the facts oracle_database_install_role_safety and oracle_database_install_role_created.
+    options: *oracle_database_install_role_main_options
+  rollback:
+    short_description: Remove what a failed run created (called from the playbook's install rescue).
+    description:
+      - Uses oracle_database_install_role_created. A home registered in a pre-existing inventory is detached first, or kept.
+    options:
+      oracle_database_install_role_rollback_on_failure:
+        type: bool
+        description: Set false to keep everything for troubleshooting.
   clean_files_from_server:
-    short_description: Remove the software staging directory and the staged scripts.
+    short_description: Remove the per-database software staging directory and the staged scripts.
     options:
       DATABASE_NAME:
         type: str
@@ -64,4 +122,4 @@ argument_specs:
       database_version:
         type: str
         required: true
-        description: Oracle release; selects <site prefix>/software/<database_version>.
+        description: Oracle release; part of the staging directory <site prefix>/software/<DATABASE_NAME>_<database_version>.

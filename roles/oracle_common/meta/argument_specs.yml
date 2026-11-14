@@ -17,7 +17,8 @@ argument_specs:
         oracle_common_patch_file_name is empty).
       - Per-OS values (oracle_common_artifact_platform, oracle_common_bash_path, oracle_common_expect_path,
         oracle_common_group_add_command, oracle_common_run_rootpre, oracle_common_package_manager,
-        oracle_common_prereq_packages) come from vars/<os>.yml and can be overridden per host or group; they are
+        oracle_common_prereq_packages, oracle_common_inventory_pointer_file (/etc/oraInst.loc on Linux and AIX))
+        come from vars/<os>.yml and can be overridden per host or group; they are
         not listed as options because they are only known after the OS variables are loaded.
     options:
       target:
@@ -52,7 +53,7 @@ argument_specs:
       oracle_common_site_prefix:
         type: str
         required: true
-        description: Absolute site directory for <DB>.env files and software staging (<prefix>/software/<version>).
+        description: Absolute site directory for <DB>.env files and software staging (<prefix>/software/<DATABASE_NAME>_<version>).
       oracle_common_root_wrapper_path:
         type: str
         required: true

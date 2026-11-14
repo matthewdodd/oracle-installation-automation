@@ -1,0 +1,57 @@
+---
+# Central inventory (replaces the original shell task that truncated and rewrote /etc/oraInst.loc).
+# Uses oracle_database_install_role_safety from tasks/preflight.yml.
+#   Pointer present (side-by-side): reused as it is; never truncated or rewritten.
+#   Pointer absent (clean target):  the inventory directory and the pointer are created.
+
+- name: Create the central inventory directory {{ oracle_database_install_role_safety.inventory_location }}
+  when:
+    - not (oracle_database_install_role_safety.inventory_pointer_exists | bool)
+    - not (oracle_database_install_role_safety.inventory_dir_exists | bool)
+  become: true
+  become_user: "{{ b_user }}"
+  ansible.builtin.file:
+    path: "{{ oracle_database_install_role_safety.inventory_location }}"
+    state: directory
+    owner: "{{ db_owner }}"
+    group: "{{ oracle_database_install_role_safety.inventory_group }}"
+    mode: "{{ oracle_database_install_role_inventory_dir_mode }}"
+  register: oracle_database_install_role_inventory_dir_result
+
+- name: Record whether this run created the central inventory directory
+  ansible.builtin.set_fact:
+    oracle_database_install_role_created: >-
+      {{ oracle_database_install_role_created
+         | combine({'inventory_dir': oracle_database_install_role_inventory_dir_result is changed}) }}
+
+# force: false never replaces a pointer that appeared after the preflight check.
+- name: Create the central inventory pointer {{ oracle_common_inventory_pointer_file }}
+  when: not (oracle_database_install_role_safety.inventory_pointer_exists | bool)
+  become: true
+  become_user: "{{ b_user }}"
+  ansible.builtin.copy:
+    dest: "{{ oracle_common_inventory_pointer_file }}"
+    content: |
+      inst_group={{ oracle_database_install_role_safety.inventory_group }}
+      inventory_loc={{ oracle_database_install_role_safety.inventory_location }}
+    force: false
+    group: "{{ oracle_database_install_role_safety.inventory_group }}"
+    mode: "{{ oracle_database_install_role_inventory_pointer_mode }}"
+  register: oracle_database_install_role_pointer_result
+
+- name: Record whether this run created the central inventory pointer
+  ansible.builtin.set_fact:
+    oracle_database_install_role_created: >-
+      {{ oracle_database_install_role_created
+         | combine({'inventory_pointer': oracle_database_install_role_pointer_result is changed}) }}
+
+- name: Read {{ oracle_common_inventory_pointer_file }}
+  become: true
+  become_user: "{{ b_user }}"
+  ansible.builtin.slurp:
+    src: "{{ oracle_common_inventory_pointer_file }}"
+  register: oracle_database_install_role_pointer_final
+
+- name: Show {{ oracle_common_inventory_pointer_file }}
+  ansible.builtin.debug:
+    msg: "{{ (oracle_database_install_role_pointer_final.content | b64decode).splitlines() }}"

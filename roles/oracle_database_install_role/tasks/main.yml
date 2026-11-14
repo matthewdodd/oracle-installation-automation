@@ -3,6 +3,11 @@
 # Inputs and derived paths are defined in ../defaults/main.yml and roles/oracle_common.
 # Requires roles/oracle_common to have run first (OS variables + input validation).
 
+# Production-host safety: refuse an existing non-empty ORACLE_HOME or a different environment file
+# (unless forced) and work out the central inventory to reuse or create. Read-only.
+- name: Check the host is safe to install on
+  ansible.builtin.include_tasks: preflight.yml
+
 # Copied as db_owner: on main the effective copy was the db_owner one in initialization_role
 # (the later connection-user copy was a no-op), so the staged scripts stay owned by db_owner.
 - name: Copy Scripts to {{ remote_script_directory }}
@@ -24,6 +29,15 @@
         path: "{{ oracle_home }}"
         mode: "{{ script_permission }}"
         state: directory
+
+    # Recorded before any extraction so the install rescue (tasks/rollback.yml) removes only a home this
+    # run created, or empties one that was an empty directory before; a non-empty home is never removed.
+    - name: Record whether this run owns the Oracle Home content
+      ansible.builtin.set_fact:
+        oracle_database_install_role_created: >-
+          {{ oracle_database_install_role_created | combine({
+               'home': oracle_database_install_role_safety.home_state == 'absent',
+               'home_contents': oracle_database_install_role_safety.home_state == 'empty'}) }}
 
     - name: Download and copy binaries to server
       ansible.builtin.include_tasks: copy_files_to_server.yml
@@ -75,32 +89,13 @@
       when:
         - oracle_common_prereq_packages | length > 0
 
-    - name: Set up /etc/oraInst.loc
-      become: yes
-      become_user: "{{ b_user }}"
-      shell: |
-        > /etc/oraInst.loc
-        instgrp=$(id -g -n {{ db_owner }})
-        echo "inst_group=$instgrp" >> /etc/oraInst.loc
-        echo "inventory_loc={{ mountpoint }}/{{ db_owner }}/oraInventory" >> /etc/oraInst.loc
-        cat /etc/oraInst.loc
+    # Reuses an existing oraInst.loc (side-by-side) or creates it on a clean target; never rewrites it.
+    - name: Set up the central inventory
+      ansible.builtin.include_tasks: inventory.yml
 
     - name: Set up {{ oracle_common_env_file }}
-      become: yes
-      become_user: "{{ b_user }}"
-      shell: |     
-        cp {{ remote_script_directory }}/oracle_database_install_role/db_install.env {{ oracle_common_env_file }}
+      ansible.builtin.include_tasks: env_file.yml
 
-        chmod 0755 {{ oracle_common_env_file }}
-
-        echo 'ORACLE_HOME=$ORACLE_BASE/product/{{ database_version }}; export ORACLE_HOME' | cat - {{ oracle_common_env_file }} > {{ oracle_common_env_file }}.tmp && mv {{ oracle_common_env_file }}.tmp {{ oracle_common_env_file }}
-        echo 'ORACLE_BASE={{ mountpoint }}/{{ db_owner }}; export ORACLE_BASE' | cat - {{ oracle_common_env_file }} > {{ oracle_common_env_file }}.tmp && mv {{ oracle_common_env_file }}.tmp {{ oracle_common_env_file }}
-        echo 'ORACLE_SID={{ DATABASE_NAME }}; export ORACLE_SID' | cat - {{ oracle_common_env_file }} > {{ oracle_common_env_file }}.tmp && mv {{ oracle_common_env_file }}.tmp {{ oracle_common_env_file }}
-        echo 'ORACLE_HOSTNAME=$(hostname); export ORACLE_HOSTNAME' | cat - {{ oracle_common_env_file }} > {{ oracle_common_env_file }}.tmp && mv {{ oracle_common_env_file }}.tmp {{ oracle_common_env_file }}
-        echo '#' | cat - {{ oracle_common_env_file }} > {{ oracle_common_env_file }}.tmp && mv {{ oracle_common_env_file }}.tmp {{ oracle_common_env_file }}
-
-        cat {{ oracle_common_env_file }}
-    
     - name: Run the rootpre.sh (AIX)
       ansible.builtin.include_tasks: rootpre.yml
       when:
@@ -109,6 +104,9 @@
     - name: Install Database Binaries for {{ db_owner }}
       shell: |
         {{ remote_script_directory }}/oracle_database_install_role/database_install.bash {{ DATABASE_NAME }} {{ db_owner }} {{ remote_script_directory }} {{ remote_output_directory }} {{ database_version }} {{ oracle_common_env_file }}
+      # Effective central inventory (existing or newly created) for INVENTORY_LOCATION in the response file.
+      environment:
+        ORACLE_INVENTORY_LOCATION: "{{ oracle_database_install_role_safety.inventory_location }}"
       async: 4000
       poll: 0
       register: shell_output

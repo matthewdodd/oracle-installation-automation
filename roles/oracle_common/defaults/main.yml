@@ -132,3 +132,5 @@ oracle_common_group_add_command: "{{ __oracle_common_group_add_command }}"
 oracle_common_run_rootpre: "{{ __oracle_common_run_rootpre }}"
 oracle_common_package_manager: "{{ __oracle_common_package_manager }}"
 oracle_common_prereq_packages: "{{ __oracle_common_prereq_packages }}"
+# Oracle central inventory pointer (oraInst.loc). Read and reused when present, created only when absent.
+oracle_common_inventory_pointer_file: "{{ __oracle_common_inventory_pointer_file }}"

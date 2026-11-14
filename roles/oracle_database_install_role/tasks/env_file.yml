@@ -1,0 +1,28 @@
+---
+# Environment file <oracle_common_env_dir>/<DATABASE_NAME>.env, rendered from templates/db_install.env.j2
+# (replaces the original cp + prepend through a shared temp file). tasks/preflight.yml has already
+# refused a different existing file unless oracle_database_install_role_force_env_file is true.
+
+- name: Write the environment file {{ oracle_common_env_file }}
+  become: true
+  become_user: "{{ b_user }}"
+  ansible.builtin.template:
+    src: db_install.env.j2
+    dest: "{{ oracle_common_env_file }}"
+    mode: "{{ oracle_database_install_role_env_file_mode }}"
+
+- name: Record that this run created the environment file
+  when: not (oracle_database_install_role_safety.env_file_exists | bool)
+  ansible.builtin.set_fact:
+    oracle_database_install_role_created: "{{ oracle_database_install_role_created | combine({'env_file': true}) }}"
+
+- name: Read {{ oracle_common_env_file }}
+  become: true
+  become_user: "{{ b_user }}"
+  ansible.builtin.slurp:
+    src: "{{ oracle_common_env_file }}"
+  register: oracle_database_install_role_env_final
+
+- name: Show {{ oracle_common_env_file }}
+  ansible.builtin.debug:
+    msg: "{{ (oracle_database_install_role_env_final.content | b64decode).splitlines() }}"
