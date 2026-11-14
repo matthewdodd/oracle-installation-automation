@@ -17,15 +17,41 @@
         state: directory
         mode: '0777'
 
-    - name: Download {{ artf_file_name }} from {{ artifactory_repo }} to {{ download_dir }}
-      ansible.builtin.get_url:
-        url: '{{ artifactory_repo }}/{{ artf_file_name }}'
-        dest: '{{ download_dir }}/{{ artf_file_name }}'
-        validate_certs: no
-        force_basic_auth: yes
-        mode: '0777'
-        tmp_dest: "{{ download_dir }}"
-        use_proxy: no
+    # The repository URL is not shown in task names and the download runs with no_log: the URL or the
+    # credentials (oracle_common_artifactory_username/password, from Ansible Vault) can be secrets.
+    - name: Download the artifact {{ artf_file_name }}
+      block:
+        - name: Download from the repository {{ artf_file_name }}
+          ansible.builtin.get_url:
+            url: '{{ artifactory_repo }}/{{ artf_file_name }}'
+            dest: '{{ download_dir }}/{{ artf_file_name }}'
+            validate_certs: "{{ oracle_common_artifactory_validate_certs | bool }}"
+            url_username: "{{ oracle_common_artifactory_username if oracle_common_artifactory_username | length > 0 else omit }}"
+            url_password: "{{ oracle_common_artifactory_password if oracle_common_artifactory_password | length > 0 else omit }}"
+            # Basic auth is only forced when credentials are supplied (inputs, or embedded in the URL).
+            force_basic_auth: >-
+              {{ oracle_common_artifactory_username | length > 0
+                 or (artifactory_repo | urlsplit('username') | default('', true) | length > 0) }}
+            mode: '0777'
+            tmp_dest: "{{ download_dir }}"
+            use_proxy: "{{ oracle_common_artifactory_use_proxy | bool }}"
+          environment: >-
+            {{ ({'https_proxy': oracle_common_https_proxy, 'HTTPS_PROXY': oracle_common_https_proxy,
+                 'http_proxy': oracle_common_https_proxy, 'HTTP_PROXY': oracle_common_https_proxy}
+                if (oracle_common_artifactory_use_proxy | bool) and oracle_common_https_proxy | length > 0 else {})
+               | combine({'SSL_CERT_FILE': oracle_common_artifactory_ca_path}
+                         if oracle_common_artifactory_ca_path | length > 0 else {}) }}
+          no_log: true
+      rescue:
+        - name: Report the failed download {{ artf_file_name }}
+          ansible.builtin.fail:
+            msg: >-
+              Download of {{ artf_file_name }} failed (HTTP {{ ansible_failed_result.status_code | default('n/a') }}):
+              {{ (__download_error | replace(oracle_common_artifactory_password, '<password>'))
+                 if oracle_common_artifactory_password | length > 0 else __download_error }}
+          vars:
+            __download_error: >-
+              {{ ansible_failed_result.msg | default('unknown error') | string | replace(artifactory_repo, '<repository URL>') }}
 
     - name: Extract all files into {{ download_dir }}
       ansible.builtin.unarchive:

@@ -1,0 +1,31 @@
+---
+# Red Hat family (RHEL and rebuilds), layered on top of Linux.yml.
+# Add RedHat-<major>.yml to give a release its own package list (resolution plan step 19).
+__oracle_common_package_manager: rpm
+__oracle_common_prereq_packages:
+  - bc
+  - binutils
+  - compat-libcap1
+  - compat-libstdc++-33
+  - elfutils-libelf
+  - elfutils-libelf-devel
+  - fontconfig-devel
+  - glibc
+  - glibc-devel
+  - ksh
+  - libaio
+  - libaio-devel
+  - libX11
+  - libXau
+  - libXi
+  - libXtst
+  - libXrender
+  - libXrender-devel
+  - libgcc
+  - libstdc++
+  - libstdc++-devel
+  - libxcb
+  - make
+  - smartmontools
+  - sysstat
+  - xorg-x11-xauth

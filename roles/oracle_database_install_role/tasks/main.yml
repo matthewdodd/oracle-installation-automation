@@ -1,6 +1,7 @@
 ---
 # tasks file for Oracle Database Installation
-# Inputs and derived paths are defined in ../defaults/main.yml.
+# Inputs and derived paths are defined in ../defaults/main.yml and roles/oracle_common.
+# Requires roles/oracle_common to have run first (OS variables + input validation).
 
 # Copied as db_owner: on main the effective copy was the db_owner one in initialization_role
 # (the later connection-user copy was a no-op), so the staged scripts stay owned by db_owner.
@@ -62,42 +63,17 @@
 
         - name: Gather the package facts
           ansible.builtin.package_facts:
-            manager: rpm
+            manager: "{{ oracle_common_package_manager }}"
 
         - name: Check whether pre-requisite packages are installed
           set_fact:
             missing_packages: "{{ missing_packages + [ item ] }}"
           when: 
             - item not in ansible_facts.packages
-          with_items:
-          - bc
-          - binutils
-          - compat-libcap1
-          - compat-libstdc++-33
-          - elfutils-libelf
-          - elfutils-libelf-devel
-          - fontconfig-devel
-          - glibc
-          - glibc-devel
-          - ksh
-          - libaio
-          - libaio-devel
-          - libX11
-          - libXau
-          - libXi
-          - libXtst
-          - libXrender
-          - libXrender-devel
-          - libgcc
-          - libstdc++
-          - libstdc++-devel
-          - libxcb
-          - make
-          - smartmontools
-          - sysstat
-          - xorg-x11-xauth
+          with_items: "{{ oracle_common_prereq_packages }}"
+      # Per-OS package lists live in roles/oracle_common/vars/<os>.yml (RedHat.yml today).
       when:
-        - ansible_distribution == "RedHat"
+        - oracle_common_prereq_packages | length > 0
 
     - name: Set up /etc/oraInst.loc
       become: yes
@@ -109,30 +85,30 @@
         echo "inventory_loc={{ mountpoint }}/{{ db_owner }}/oraInventory" >> /etc/oraInst.loc
         cat /etc/oraInst.loc
 
-    - name: Set up /local/{{ DATABASE_NAME }}.env
+    - name: Set up {{ oracle_common_env_file }}
       become: yes
       become_user: "{{ b_user }}"
       shell: |     
-        cp {{ remote_script_directory }}/oracle_database_install_role/db_install.env /local/{{ DATABASE_NAME }}.env
+        cp {{ remote_script_directory }}/oracle_database_install_role/db_install.env {{ oracle_common_env_file }}
 
-        chmod 0755 /local/{{ DATABASE_NAME }}.env
+        chmod 0755 {{ oracle_common_env_file }}
 
-        echo 'ORACLE_HOME=$ORACLE_BASE/product/{{ database_version }}; export ORACLE_HOME' | cat - /local/{{ DATABASE_NAME }}.env > /local/temp && mv /local/temp /local/{{ DATABASE_NAME }}.env
-        echo 'ORACLE_BASE={{ mountpoint }}/{{ db_owner }}; export ORACLE_BASE' | cat - /local/{{ DATABASE_NAME }}.env > /local/temp && mv /local/temp /local/{{ DATABASE_NAME }}.env
-        echo 'ORACLE_SID={{ DATABASE_NAME }}; export ORACLE_SID' | cat - /local/{{ DATABASE_NAME }}.env > /local/temp && mv /local/temp /local/{{ DATABASE_NAME }}.env
-        echo 'ORACLE_HOSTNAME=$(hostname); export ORACLE_HOSTNAME' | cat - /local/{{ DATABASE_NAME }}.env > /local/temp && mv /local/temp /local/{{ DATABASE_NAME }}.env
-        echo '#' | cat - /local/{{ DATABASE_NAME }}.env > /local/temp && mv /local/temp /local/{{ DATABASE_NAME }}.env
+        echo 'ORACLE_HOME=$ORACLE_BASE/product/{{ database_version }}; export ORACLE_HOME' | cat - {{ oracle_common_env_file }} > {{ oracle_common_env_file }}.tmp && mv {{ oracle_common_env_file }}.tmp {{ oracle_common_env_file }}
+        echo 'ORACLE_BASE={{ mountpoint }}/{{ db_owner }}; export ORACLE_BASE' | cat - {{ oracle_common_env_file }} > {{ oracle_common_env_file }}.tmp && mv {{ oracle_common_env_file }}.tmp {{ oracle_common_env_file }}
+        echo 'ORACLE_SID={{ DATABASE_NAME }}; export ORACLE_SID' | cat - {{ oracle_common_env_file }} > {{ oracle_common_env_file }}.tmp && mv {{ oracle_common_env_file }}.tmp {{ oracle_common_env_file }}
+        echo 'ORACLE_HOSTNAME=$(hostname); export ORACLE_HOSTNAME' | cat - {{ oracle_common_env_file }} > {{ oracle_common_env_file }}.tmp && mv {{ oracle_common_env_file }}.tmp {{ oracle_common_env_file }}
+        echo '#' | cat - {{ oracle_common_env_file }} > {{ oracle_common_env_file }}.tmp && mv {{ oracle_common_env_file }}.tmp {{ oracle_common_env_file }}
 
-        cat /local/{{ DATABASE_NAME }}.env
+        cat {{ oracle_common_env_file }}
     
     - name: Run the rootpre.sh (AIX)
       ansible.builtin.include_tasks: rootpre.yml
       when:
-        - ansible_distribution == "AIX"
+        - oracle_common_run_rootpre | bool
     
     - name: Install Database Binaries for {{ db_owner }}
       shell: |
-        {{ remote_script_directory }}/oracle_database_install_role/database_install.bash {{ DATABASE_NAME }} {{ db_owner }} {{ remote_script_directory }} {{ remote_output_directory }} {{ database_version }}
+        {{ remote_script_directory }}/oracle_database_install_role/database_install.bash {{ DATABASE_NAME }} {{ db_owner }} {{ remote_script_directory }} {{ remote_output_directory }} {{ database_version }} {{ oracle_common_env_file }}
       async: 4000
       poll: 0
       register: shell_output
@@ -153,8 +129,8 @@
       become: yes
       become_user: "{{ b_user }}"
       shell: |
-        set timeout 300
-        spawn /usr/local/bin/root-wrapper
+        set timeout {{ oracle_common_root_wrapper_timeout | int }}
+        spawn {{ oracle_common_root_wrapper_path }}
 
         expect "*Enter your Selection*"
         
@@ -178,7 +154,7 @@
 
         exit 0
       args:
-        executable: /usr/bin/expect
+        executable: "{{ oracle_common_expect_path }}"
       register: root_output
 
     - debug:
@@ -193,7 +169,7 @@
 
     - name: Patch Database Binaries for {{ db_owner }}
       shell: |
-        {{ remote_script_directory }}/oracle_database_install_role/database_patch.bash {{ DATABASE_NAME }} {{ db_owner }} {{ remote_script_directory }} {{ remote_output_directory }} {{ install_folder_name }}
+        {{ remote_script_directory }}/oracle_database_install_role/database_patch.bash {{ DATABASE_NAME }} {{ db_owner }} {{ remote_script_directory }} {{ remote_output_directory }} {{ install_folder_name }} {{ oracle_common_env_file }}
       async: 4000
       poll: 0
       register: shell_output

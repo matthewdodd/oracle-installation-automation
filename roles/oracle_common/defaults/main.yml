@@ -1,0 +1,134 @@
+---
+# Shared configuration for the Oracle roles (initialization_role, oracle_database_install_role)
+# and the playbook-level notification.
+#
+# Nothing in this file is environment-specific. Set site values per environment in inventory
+# group_vars/host_vars, AAP extra vars, or Ansible Vault (secrets). See inventory/example/.
+# Every input is documented in meta/argument_specs.yml and checked by tasks/preflight.yml.
+#
+# Required job inputs (AAP survey / extra vars; names unchanged from the original playbook):
+#   target            comma-separated host list
+#   DATABASE_NAME     ORACLE_SID, ^[A-Za-z][A-Za-z0-9_]{0,7}$
+#   db_owner          Oracle software owner (POSIX user name)
+#   database_version  one of the keys of oracle_common_artifactory_version_map
+#   mountpoint        base filesystem; ORACLE_BASE = <mountpoint>/<db_owner>
+#
+# Required environment inputs (no safe generic default exists, so there is none here):
+#   oracle_common_artifactory_url    repository URL that holds one folder per Oracle release,
+#                                    e.g. https://artifactory.example.com/artifactory/release/oracledatabase
+#   oracle_common_site_prefix        site directory for <DB>.env files and software staging, e.g. /local
+#   oracle_common_root_wrapper_path  privileged wrapper that runs root.sh / rootpre.sh
+#   oracle_common_group_name         OS group db_owner and b_user join (the original input name
+#                                    GROUP_NAME is still accepted); only while
+#                                    oracle_common_manage_group_membership is true
+
+# --- Privileged account -------------------------------------------------------------------
+# Account used through `become` for root-level work: /etc/oraInst.loc, the site prefix,
+# and running the root wrapper. `root` is the generic default; set a site account if the
+# connection user may only sudo to a specific privileged user.
+b_user: root
+
+# --- OS group membership --------------------------------------------------------------------
+# Add db_owner and b_user to oracle_common_group_name (the original behaviour). Set false where
+# group membership is managed elsewhere (LDAP/IdM, cloud images); the group is then not needed.
+oracle_common_manage_group_membership: true
+# Required while membership is managed; no generic default exists. GROUP_NAME (the original
+# variable name, e.g. from existing AAP job templates or inventories) is accepted as an alias.
+oracle_common_group_name: "{{ GROUP_NAME | default('') }}"
+
+# --- Staging ------------------------------------------------------------------------------
+# Generic base for the per-database staging directories.
+oracle_common_staging_base: /tmp
+remote_script_directory: "{{ oracle_common_staging_base }}/ora_ansible_scripts_{{ DATABASE_NAME }}"
+remote_output_directory: "{{ oracle_common_staging_base }}/oracle_database_install_{{ DATABASE_NAME }}"
+# Mode applied to staged scripts and directories.
+# TODO(resolution plan step 15): tighten; 0777 is a privilege-escalation risk.
+script_permission: "0777"
+
+# --- Site layout --------------------------------------------------------------------------
+# oracle_common_site_prefix is required (see above). Derived paths, each overridable:
+oracle_common_env_dir: "{{ oracle_common_site_prefix }}"
+oracle_common_env_file: "{{ oracle_common_env_dir }}/{{ DATABASE_NAME }}.env"
+
+# --- Artifact repository ------------------------------------------------------------------
+# oracle_common_artifactory_url is required (see above). Files are fetched from
+#   <oracle_common_artifactory_url>/<oracle_common_artifactory_version_map[database_version]>/<file>
+# Supported Oracle releases and their folder names. This is also the database_version
+# allow-list: there is no fallback for other values.
+oracle_common_artifactory_version_map:
+  "19.0.0.0": "19.0.0"
+  "12.2.0.1": "12.2.0.1"
+  "12.1.0.2": "12.1.0.2"
+# Releases that are still accepted but out of Oracle Premier/Extended support (a warning is shown).
+oracle_common_desupported_versions:
+  - "12.2.0.1"
+  - "12.1.0.2"
+# Optional credentials. Secrets: map them from Ansible Vault (vault_* variables) or an AAP
+# credential; never commit them in plain text. Basic auth is only forced when supplied.
+oracle_common_artifactory_username: ""
+oracle_common_artifactory_password: ""
+# The original download ignored proxy settings; set true to download through oracle_common_https_proxy.
+oracle_common_artifactory_use_proxy: false
+# Verify the repository TLS certificate (the original download did not). Point
+# oracle_common_artifactory_ca_path at a PEM bundle on the target host for an internal CA
+# (exported to the download as SSL_CERT_FILE). Setting validate_certs false restores the
+# original behaviour but exposes the credentials to interception; prefer the CA bundle.
+oracle_common_artifactory_validate_certs: true
+oracle_common_artifactory_ca_path: ""
+
+# --- Patch selection ----------------------------------------------------------------------
+# File name of the patch bundle in the repository, e.g. LINUX_jan26.tar.gz. Pin it explicitly.
+# When empty, the original date-derived name is used as a fallback:
+#   <AIX|LINUX>_jan<YY>.tar.gz, YY = current year on the target (a warning is shown).
+oracle_common_patch_file_name: ""
+# The documented fallback (original behaviour), used only while oracle_common_patch_file_name is empty.
+oracle_common_patch_file_name_fallback: >-
+  {{ oracle_common_artifact_platform }}_jan{{ (ansible_facts['date_time']['year'] | string)[-2:] }}.tar.gz
+
+# --- Proxy --------------------------------------------------------------------------------
+# Optional HTTPS proxy, e.g. http://proxy.example.com:8080. Empty: no proxy variables are set.
+# Used by the Teams notification, and by downloads when oracle_common_artifactory_use_proxy is true.
+oracle_common_https_proxy: ""
+
+# --- Root scripts -------------------------------------------------------------------------
+# oracle_common_root_wrapper_path is required (see above).
+# Seconds the expect dialogue waits for each wrapper prompt.
+oracle_common_root_wrapper_timeout: 300
+
+# --- Teams notification (Teams Workflows webhook) -----------------------------------------
+# The webhook URL is a bearer secret: supply it from Ansible Vault or an AAP credential.
+# Empty: notifications are skipped. (notification_webhook_url is accepted as an alias.)
+oracle_common_notification_webhook_url: "{{ notification_webhook_url | default('') }}"
+# Base of the AAP/Tower job link; the job id is appended, e.g.
+#   https://aap.example.com/#/jobs/playbook/
+# Empty: the card shows "n/a" for the job URL.
+oracle_common_job_url_base: ""
+# Host that sends the card. Empty: each target host sends its own card (original behaviour).
+# Set e.g. "localhost" to send from the controller / execution environment instead.
+oracle_common_notification_delegate_to: ""
+oracle_common_notification_validate_certs: true
+# Optional CA bundle (PEM) used to verify the webhook endpoint, e.g. a corporate TLS-inspection CA.
+oracle_common_notification_ca_path: ""
+oracle_common_notification_timeout: 30
+# Adaptive Card colours per state (Default, Dark, Light, Accent, Good, Warning, Attention).
+oracle_common_notification_colours:
+  start: Good
+  success: Accent
+  fail: Attention
+
+# --- Platform -----------------------------------------------------------------------------
+# Kernel names (ansible_facts['system']) this automation supports. Platform specifics are
+# loaded from vars/<system>.yml, vars/<os_family>.yml, vars/<distribution>.yml and
+# vars/<distribution>-<major version>.yml (generic first, specific last); supporting a new
+# distribution or release means adding one of those files.
+oracle_common_supported_systems:
+  - Linux
+  - AIX
+# Values below come from the OS variable files and can be overridden per host or group.
+oracle_common_artifact_platform: "{{ __oracle_common_artifact_platform }}"
+oracle_common_bash_path: "{{ __oracle_common_bash_path }}"
+oracle_common_expect_path: "{{ __oracle_common_expect_path }}"
+oracle_common_group_add_command: "{{ __oracle_common_group_add_command }}"
+oracle_common_run_rootpre: "{{ __oracle_common_run_rootpre }}"
+oracle_common_package_manager: "{{ __oracle_common_package_manager }}"
+oracle_common_prereq_packages: "{{ __oracle_common_prereq_packages }}"

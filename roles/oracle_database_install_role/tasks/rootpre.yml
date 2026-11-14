@@ -17,8 +17,8 @@
   become: yes
   become_user: "{{ b_user }}"
   shell: |
-    set timeout 300
-    spawn /usr/local/bin/root-wrapper
+    set timeout {{ oracle_common_root_wrapper_timeout | int }}
+    spawn {{ oracle_common_root_wrapper_path }}
 
     expect "*Enter your Selection*"
     
@@ -42,7 +42,7 @@
     
     exit 0
   args:
-    executable: /usr/bin/expect
+    executable: "{{ oracle_common_expect_path }}"
   environment:
     ROOTPRE_DIR: "{{ root_pre_folder }}"
   register: rootpre_output

@@ -1,0 +1,37 @@
+---
+# Example environment configuration for the database servers. Copy inventory/example/ to
+# inventory/<env>/ and replace every example.com value. Variable reference:
+# roles/oracle_common/meta/argument_specs.yml (defaults in roles/oracle_common/defaults/main.yml).
+
+# --- Connection ---------------------------------------------------------------------------
+ansible_user: ansible_svc
+# ansible_python_interpreter: /usr/bin/python3
+
+# --- Required environment inputs ----------------------------------------------------------
+oracle_common_artifactory_url: https://artifactory.example.com/artifactory/release/oracledatabase
+oracle_common_site_prefix: /local
+oracle_common_root_wrapper_path: /usr/local/bin/root-wrapper
+# OS group db_owner and b_user join (the original variable name GROUP_NAME is also accepted).
+oracle_common_group_name: oracle_automation
+# Set false where group membership is managed elsewhere (the group is then not needed).
+# oracle_common_manage_group_membership: true
+
+# --- Optional -----------------------------------------------------------------------------
+# Privileged account used through become (default: root).
+# b_user: oracle_admin
+# Pin the patch bundle (otherwise <AIX|LINUX>_jan<YY>.tar.gz for the current year is used).
+# oracle_common_patch_file_name: LINUX_jan26.tar.gz
+# oracle_common_https_proxy: http://proxy.example.com:8080
+# oracle_common_job_url_base: https://aap.example.com/#/jobs/playbook/
+# oracle_common_notification_delegate_to: localhost
+# oracle_common_notification_ca_path: /etc/pki/tls/certs/ca-bundle.crt
+# PEM bundle on the target host that signs the repository certificate (internal CA).
+# oracle_common_artifactory_ca_path: /etc/pki/ca-trust/source/anchors/example-ca.pem
+# oracle_common_artifactory_use_proxy: false
+
+# --- Secrets (Ansible Vault) --------------------------------------------------------------
+# Keep secrets in an encrypted vault.yml next to this file; see vault.yml.example. Map them here
+# once vault.yml exists (uncomment). In AAP, a custom credential type can inject the same names.
+# oracle_common_notification_webhook_url: "{{ vault_oracle_notification_webhook_url }}"
+# oracle_common_artifactory_username: "{{ vault_oracle_artifactory_username }}"
+# oracle_common_artifactory_password: "{{ vault_oracle_artifactory_password }}"

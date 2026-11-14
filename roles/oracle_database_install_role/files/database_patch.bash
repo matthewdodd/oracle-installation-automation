@@ -18,12 +18,19 @@ then
   exit 1
 elif [[ -z "$5" ]]
 then
-  echo "install_folder_name parameter required, i.e. /local/software/{{ database_version }}"
+  echo "install_folder_name parameter required, i.e. <site prefix>/software/{{ database_version }}"
+  exit 1
+elif [[ -z "$6" ]]
+then
+  echo "sixth argument must be the environment file, i.e. <oracle_common_env_dir>/<DATABASE_NAME>.env"
   exit 1
 fi
 
 ORACLE_SID=$1
-. /local/$ORACLE_SID.env
+# Environment file written by the role (oracle_common_env_file).
+oracle_env_file="$6"
+# shellcheck source=/dev/null
+. "$oracle_env_file"
 
 db_owner=$2
 remote_script_directory=$3/oracle_database_install_role

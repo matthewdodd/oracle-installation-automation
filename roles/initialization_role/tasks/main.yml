@@ -1,4 +1,5 @@
 ---
+# Requires roles/oracle_common to have run first (OS variables + input validation).
 - name: Init Clean
   block:
     - name: Init Clean
@@ -6,6 +7,7 @@
   ignore_errors: yes
 
 - name: Add member to group
+  when: oracle_common_manage_group_membership | bool
   block:
     - name: Add member to group
       ansible.builtin.include_tasks: group_membership.yml
@@ -29,6 +31,7 @@
         mode: "{{ script_permission }}"
 
 - name: Add member to group
+  when: oracle_common_manage_group_membership | bool
   block:
     - name: Add member to group
       ansible.builtin.include_tasks: group_membership.yml

@@ -1,0 +1,19 @@
+---
+# Internal validation patterns used by tasks/preflight.yml. Not meant to be overridden.
+# Every pattern is anchored with \A ... \Z (never ^ ... $): Python's `$` also matches just before
+# a trailing newline, so "oracle\n" would pass a `$`-anchored pattern and reach shell commands.
+# ORACLE_SID: a letter, then up to 7 letters, digits or underscores.
+__oracle_common_re_sid: '\A[A-Za-z][A-Za-z0-9_]{0,7}\Z'
+# Portable POSIX user / group name.
+__oracle_common_re_posix_name: '\A[A-Za-z_][A-Za-z0-9_.-]{0,31}\Z'
+# Absolute path made only of safe characters (no whitespace or shell metacharacters).
+__oracle_common_re_abs_path: '\A/[A-Za-z0-9._/-]*\Z'
+# Path component that walks upwards.
+__oracle_common_re_dotdot: '/\.\./'
+# http(s) URL without whitespace.
+__oracle_common_re_url: '\Ahttps?://[^\s]+\Z'
+__oracle_common_re_https_url: '\Ahttps://[^\s]+\Z'
+# Plain file name.
+__oracle_common_re_file_name: '\A[A-Za-z0-9._+-]+\Z'
+# Positive integer (seconds).
+__oracle_common_re_uint: '\A[0-9]+\Z'

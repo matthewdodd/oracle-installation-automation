@@ -3,6 +3,16 @@
   hosts: localhost
   gather_facts: false
   tasks:
+    - name: Check that target was supplied
+      ansible.builtin.assert:
+        that:
+          - target is defined
+          - target | string | trim | length > 0
+        fail_msg: >-
+          target is required: pass the comma-separated host list, e.g. -e target=dbhost01.example.com
+          (AAP: the 'target' survey question / extra var).
+        quiet: true
+
     - name: Add server names to the Ansible inventory
       when: target is defined
       ansible.builtin.add_host:
@@ -12,7 +22,8 @@
       changed_when: false
 
 - name: Database Binary installation Playbook - Tasks
-  hosts: "{{ target }}"
+  # The default only keeps the play parseable when target is missing; play 1 fails first with a clear message.
+  hosts: "{{ target | default('') }}"
   tasks:
     - name: Send Starting Notification
       ansible.builtin.include_tasks: notification.yml
@@ -21,6 +32,11 @@
 
     - name: Initialize
       block:
+        # Shared configuration: per-OS variables and validation of every input (roles/oracle_common).
+        - name: Load platform variables and validate inputs
+          ansible.builtin.import_role:
+            name: oracle_common
+
         - name: Initialize
           ansible.builtin.import_role:
             name: initialization_role

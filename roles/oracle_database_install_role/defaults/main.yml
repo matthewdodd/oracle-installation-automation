@@ -1,29 +1,20 @@
 ---
-# Required inputs (no defaults; validated in resolution plan step 10):
-#   DATABASE_NAME, db_owner, database_version, mountpoint, target
-
-# Privileged user used through `become` for root-level steps.
-# PLACEHOLDER: set per environment (resolution plan step 9).
-b_user: becomeUser
-
-# Mode applied to staged scripts and directories.
-# TODO(resolution plan step 15): tighten; 0777 is a privilege-escalation risk.
-script_permission: "0777"
-
-# Remote staging locations. Keep in sync with roles/initialization_role/defaults/main.yml.
-remote_script_directory: "/tmp/ora_ansible_scripts_{{ DATABASE_NAME }}"
-remote_output_directory: "/tmp/oracle_database_install_{{ DATABASE_NAME }}"
+# Install layout and artifact selection. Shared inputs (DATABASE_NAME, db_owner, database_version,
+# mountpoint, b_user, staging directories, site prefix, repository URL and credentials, root
+# wrapper, patch file name) and per-OS values are defined once in roles/oracle_common.
+# Run oracle_common before this role. Every value below can be overridden.
 
 # Install layout
 oracle_home: "{{ mountpoint }}/{{ db_owner }}/product/{{ database_version }}"
-patch_folder_prefix: /local
+patch_folder_prefix: "{{ oracle_common_site_prefix }}"
 install_folder_name: "{{ patch_folder_prefix }}/software/{{ database_version }}"
 
-# Artifactory source
-# TODO(resolution plan step 10): replace the silent 12.1.0.2 fallback with an allow-list.
-artf_ver: "{{ '19.0.0' if database_version == '19.0.0.0' else ('12.2.0.1' if database_version == '12.2.0.1' else '12.1.0.2') }}"
-# PLACEHOLDER: set per environment (resolution plan step 9).
-artifactory_repo: "https://artifactory.domain.com/artifactory/release/oracledatabase/{{ artf_ver }}"
-install_file_name: "{{ 'AIX' if ansible_facts['distribution'] == 'AIX' else 'LINUX' }}_binaries.tar.gz"
-# TODO(resolution plan step 9 / M1): date-derived; make this an explicit, pinned input.
-patch_file_name: "{{ 'AIX' if ansible_facts['distribution'] == 'AIX' else 'LINUX' }}_jan{{ (ansible_facts['date_time']['year'] | string)[-2:] }}.tar.gz"
+# Artifact repository: <oracle_common_artifactory_url>/<artf_ver>/<file>.
+# database_version is validated against oracle_common_artifactory_version_map (no fallback).
+artf_ver: "{{ oracle_common_artifactory_version_map[database_version] }}"
+artifactory_repo: "{{ oracle_common_artifactory_url | regex_replace('/+$', '') }}/{{ artf_ver }}"
+install_file_name: "{{ oracle_common_artifact_platform }}_binaries.tar.gz"
+# Pinned with oracle_common_patch_file_name; the date-derived name is only a documented fallback.
+patch_file_name: >-
+  {{ oracle_common_patch_file_name if oracle_common_patch_file_name | length > 0
+     else oracle_common_patch_file_name_fallback }}

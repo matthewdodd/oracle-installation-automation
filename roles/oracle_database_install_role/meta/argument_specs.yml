@@ -1,0 +1,67 @@
+---
+# Inputs of this role. Shared defaults and per-OS values come from roles/oracle_common, which must
+# run first; derived paths are in ../defaults/main.yml.
+argument_specs:
+  main:
+    short_description: Download, install and patch Oracle Database software (software-only install).
+    description:
+      - Downloads the binaries for database_version from <oracle_common_artifactory_url>/<artf_ver>,
+        installs them into <mountpoint>/<db_owner>/product/<database_version>, runs root.sh through the
+        root wrapper, then applies the patch bundle patch_file_name.
+    options:
+      DATABASE_NAME:
+        type: str
+        required: true
+        description: ORACLE_SID.
+      db_owner:
+        type: str
+        required: true
+        description: OS user that owns the Oracle software.
+      database_version:
+        type: str
+        required: true
+        description: Oracle release; one of the keys of oracle_common_artifactory_version_map.
+      mountpoint:
+        type: str
+        required: true
+        description: Absolute base filesystem; ORACLE_BASE is <mountpoint>/<db_owner>.
+      oracle_common_artifactory_url:
+        type: str
+        required: true
+        description: Repository URL holding one sub-folder per Oracle release.
+      oracle_common_site_prefix:
+        type: str
+        required: true
+        description: Site directory for <DB>.env files and software staging.
+      oracle_common_root_wrapper_path:
+        type: str
+        required: true
+        description: Privileged wrapper that runs root.sh / rootpre.sh.
+      b_user:
+        type: str
+        description: Privileged account used through become (default root, from oracle_common).
+      oracle_common_artifactory_username:
+        type: str
+        description: Optional repository user (secret).
+      oracle_common_artifactory_password:
+        type: str
+        no_log: true
+        description: Optional repository password or token (secret).
+      oracle_common_patch_file_name:
+        type: str
+        description: Pinned patch bundle file name; empty falls back to the date-derived name.
+  clean_files_from_server:
+    short_description: Remove the software staging directory and the staged scripts.
+    options:
+      DATABASE_NAME:
+        type: str
+        required: true
+        description: ORACLE_SID; part of the staging directory names.
+      db_owner:
+        type: str
+        required: true
+        description: OS user that owns the staged scripts.
+      database_version:
+        type: str
+        required: true
+        description: Oracle release; selects <site prefix>/software/<database_version>.

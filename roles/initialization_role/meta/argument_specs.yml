@@ -1,0 +1,32 @@
+---
+# Inputs of this role. Defaults and per-OS values come from roles/oracle_common, which must run first.
+argument_specs:
+  main:
+    short_description: Prepare a host for an Oracle install (staging directories, OS group membership).
+    description:
+      - Removes and recreates the per-database staging directories as db_owner.
+      - Adds db_owner and b_user to oracle_common_group_name (alias GROUP_NAME) when oracle_common_manage_group_membership is true.
+    options:
+      DATABASE_NAME:
+        type: str
+        required: true
+        description: ORACLE_SID; part of the staging directory names.
+      db_owner:
+        type: str
+        required: true
+        description: OS user that owns the Oracle software.
+      b_user:
+        type: str
+        description: Privileged account (default root, from oracle_common); added to the group.
+      oracle_common_group_name:
+        type: str
+        description: OS group to join (defaults to GROUP_NAME). Required while oracle_common_manage_group_membership is true.
+      GROUP_NAME:
+        type: str
+        description: Original name of oracle_common_group_name, still accepted.
+      oracle_common_manage_group_membership:
+        type: bool
+        description: Manage membership of oracle_common_group_name (default true, from oracle_common).
+      script_permission:
+        type: str
+        description: Mode of the staging directories (from oracle_common).
