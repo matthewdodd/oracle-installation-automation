@@ -10,6 +10,9 @@
 # Sets oracle_database_install_role_safety (what was found) and resets oracle_database_install_role_created
 # (what this run creates; read by tasks/rollback.yml).
 
+# Every path checked in this file is rejected when it has a '..' component (shared rule
+# __oracle_common_re_dotdot in roles/oracle_common/vars/main.yml, applied to the path as given) and is
+# also matched against __oracle_common_re_abs_path (or the TNS_ADMIN pattern), which rejects line breaks.
 - name: Validate the install layout inputs
   ansible.builtin.assert:
     that: __oracle_database_install_role_layout_errors | length == 0
@@ -37,7 +40,7 @@
           | map(attribute='name') | map('regex_replace', '$', ' must be an absolute path without whitespace or shell metacharacters')
           | list)
          + (__oracle_database_install_role_path_checks
-            | selectattr('value', 'search', '(/\.\.(/|$))|(\A/+\Z)')
+            | selectattr('value', 'search', '(?:' ~ __oracle_common_re_dotdot ~ ')|\A/+\Z')
             | map(attribute='name') | map('regex_replace', '$', " must not contain '..' or be '/'")
             | list)
          + (['oracle_database_install_role_inventory_location must be an absolute path without whitespace or shell metacharacters, or empty']
@@ -61,13 +64,13 @@
       {{ (['oracle_database_install_role_env_tns_admin must be an absolute path, or start with $ORACLE_BASE/ or $ORACLE_HOME/,'
            ~ ' without whitespace, shell metacharacters or ..']
           if not ((oracle_database_install_role_env_tns_admin | string) is match('\A(\$ORACLE_BASE|\$ORACLE_HOME)?/[A-Za-z0-9._/-]*\Z')
-                  and (oracle_database_install_role_env_tns_admin | string) is not search('/\.\.(/|\Z)')) else [])
+                  and (oracle_database_install_role_env_tns_admin | string) is not search(__oracle_common_re_dotdot)) else [])
          + (['oracle_database_install_role_env_path_dirs must be a non-empty list of absolute paths without whitespace,'
              ~ ' shell metacharacters or ..']
             if (oracle_database_install_role_env_path_dirs is string)
                or (oracle_database_install_role_env_path_dirs | length == 0)
                or (oracle_database_install_role_env_path_dirs | map('string') | reject('match', __oracle_common_re_abs_path) | list | length > 0)
-               or (oracle_database_install_role_env_path_dirs | map('string') | select('search', '/\.\.(/|\Z)') | list | length > 0) else [])
+               or (oracle_database_install_role_env_path_dirs | map('string') | select('search', __oracle_common_re_dotdot) | list | length > 0) else [])
          + (['oracle_database_install_role_env_nls_lang must be a value such as american_america.AL32UTF8 (letters, digits, _ . -)']
             if not (oracle_database_install_role_env_nls_lang | string) is match('\A[A-Za-z0-9_.-]+\Z') else [])
          + (['oracle_database_install_role_env_nls_timestamp_format and oracle_database_install_role_env_nls_date_format'
@@ -93,11 +96,11 @@
          + (['oracle_database_install_role_response_file must be an absolute path without shell metacharacters, or empty']
             if (oracle_database_install_role_response_file | string | length > 0)
                and not ((oracle_database_install_role_response_file | string) is match(__oracle_common_re_abs_path)
-                        and (oracle_database_install_role_response_file | string) is not search('/\.\.(/|\Z)')) else [])
+                        and (oracle_database_install_role_response_file | string) is not search(__oracle_common_re_dotdot)) else [])
          + (['oracle_database_install_role_response_extra_file must be an absolute path without shell metacharacters, or empty']
             if (oracle_database_install_role_response_extra_file | string | length > 0)
                and not ((oracle_database_install_role_response_extra_file | string) is match(__oracle_common_re_abs_path)
-                        and (oracle_database_install_role_response_extra_file | string) is not search('/\.\.(/|\Z)')) else [])
+                        and (oracle_database_install_role_response_extra_file | string) is not search(__oracle_common_re_dotdot)) else [])
          + (['oracle_database_install_role_patch_inner_archive_patterns must be a list of file-name globs such as *.zip (no /)']
             if (oracle_database_install_role_patch_inner_archive_patterns is string)
                or (oracle_database_install_role_patch_inner_archive_patterns
@@ -267,7 +270,7 @@
   ansible.builtin.assert:
     that:
       - oracle_database_install_role_safety.existing_inventory_location is match(__oracle_common_re_abs_path)
-      - oracle_database_install_role_safety.existing_inventory_location is not search('/\.\.(/|$)')
+      - oracle_database_install_role_safety.existing_inventory_location is not search(__oracle_common_re_dotdot)
       - >-
         (oracle_database_install_role_inventory_location | default('', true) | length == 0)
         or (oracle_database_install_role_inventory_location | regex_replace('(?<=.)/+$', ''))

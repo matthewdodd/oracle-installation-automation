@@ -10,7 +10,8 @@
 # and (for one accepted integer) the mode the file module really applies.
 #
 # It also covers the '..' path guard (__oracle_common_re_dotdot): a '..' component at the start, in the
-# middle or at the end of a path is rejected, while names that merely contain dots are accepted.
+# middle or at the end of a path is rejected, while names that merely contain dots are accepted, both in
+# the oracle_common preflight and in every path checked by the oracle_database_install_role preflight.
 - name: Permission-mode validation regression test
   hosts: localhost
   connection: local
@@ -77,6 +78,80 @@
       - name: names that merely contain dots
         paths: {mountpoint: /u01/app..x, oracle_common_site_prefix: /local/.hidden, oracle_common_staging_base: /u01/oracle/19.0.0.0/stage..}
         rejected: []
+    # Install-role preflight (tasks/preflight.yml): every path it checks uses the same '..' rule; '/' alone
+    # is also rejected for the layout paths. Each case varies one group of checks (layout, environment file
+    # or installer) so the run stops at that group.
+    install_path_validation_baseline:
+      oracle_home: /u01/oracle/product/19.0.0.0
+      oracle_base: /u01/oracle
+      install_folder_name: /local/software/TESTDB_19.0.0.0
+      new_inventory_location: /u01/oracle/oraInventory
+      inventory_location: ""
+      oracle_common_inventory_pointer_file: /etc/oraInst.loc
+      env_tns_admin: $ORACLE_BASE/admin/network/admin
+      env_path_dirs: [/usr/bin, /bin, /usr/local/bin]
+      response_file: ""
+      response_extra_file: ""
+    install_path_validation_cases:
+      - {name: valid baseline, paths: {}, rejected: []}
+      - name: layout trailing '..'
+        paths: {oracle_home: /u01/oracle/product/.., oracle_base: /u01/oracle/.., install_folder_name: /local/software/..,
+                new_inventory_location: /u01/oracle/oraInventory/.., inventory_location: /u01/app/oraInventory/..,
+                oracle_common_inventory_pointer_file: /etc/..}
+        rejected: [oracle_home, oracle_base, install_folder_name, new_inventory_location, inventory_location,
+                   oracle_common_inventory_pointer_file]
+      - name: layout inner '..'
+        paths: {oracle_home: /u01/../etc/product, oracle_base: /u01/../etc, install_folder_name: /local/../tmp/software,
+                new_inventory_location: /u01/../oraInventory, inventory_location: /u01/../app/oraInventory,
+                oracle_common_inventory_pointer_file: /etc/../tmp/oraInst.loc}
+        rejected: [oracle_home, oracle_base, install_folder_name, new_inventory_location, inventory_location,
+                   oracle_common_inventory_pointer_file]
+      - name: layout root followed by '..'
+        paths: {oracle_home: /.., oracle_base: /../u01, inventory_location: /../oraInventory}
+        rejected: [oracle_home, oracle_base, inventory_location]
+      - name: layout leading and bare '..'
+        paths: {oracle_home: ../u01/product, oracle_base: .., install_folder_name: ../local/software,
+                new_inventory_location: ../.., inventory_location: .., oracle_common_inventory_pointer_file: ../etc/oraInst.loc}
+        rejected: [oracle_home, oracle_base, install_folder_name, new_inventory_location, inventory_location,
+                   oracle_common_inventory_pointer_file]
+      - name: layout root directory
+        paths: {oracle_base: /, new_inventory_location: //, inventory_location: /}
+        rejected: [oracle_base, new_inventory_location, inventory_location]
+      # The shared rule ends in \Z (not `$`, which also matches before a final line break), so it does not see
+      # '..' followed by a line break; such values are rejected because every path must also match a pattern
+      # without line breaks.
+      - name: layout '..' before a final line break
+        paths: {oracle_home: "/u01/oracle/product/..\n", inventory_location: "/u01/app/..\n", oracle_common_inventory_pointer_file: "/etc/..\n"}
+        rejected: [oracle_home, inventory_location, oracle_common_inventory_pointer_file]
+      - name: layout names that merely contain dots
+        paths: {oracle_home: /u01/oracle/product/19.0.0.0_2, oracle_base: /u01/app..x, install_folder_name: /local/software/TESTDB..,
+                new_inventory_location: /u01/.hidden/oraInventory, inventory_location: /u01/..app/oraInventory,
+                oracle_common_inventory_pointer_file: /etc/./oraInst.loc...}
+        rejected: []
+      - name: environment file '..' at the end, in the middle, at the start and bare
+        paths: {env_tns_admin: $ORACLE_BASE/.., env_path_dirs: [/usr/bin, /usr/.., /opt/../bin]}
+        rejected: [env_tns_admin, env_path_dirs]
+      - {name: environment file inner '..', paths: {env_tns_admin: $ORACLE_HOME/../network/admin}, rejected: [env_tns_admin]}
+      - {name: environment file absolute '..', paths: {env_tns_admin: /etc/../network, env_path_dirs: [/..]}, rejected: [env_tns_admin, env_path_dirs]}
+      - {name: environment file leading '..', paths: {env_tns_admin: ../network, env_path_dirs: [../bin]}, rejected: [env_tns_admin, env_path_dirs]}
+      - {name: environment file bare '..', paths: {env_tns_admin: .., env_path_dirs: [..]}, rejected: [env_tns_admin, env_path_dirs]}
+      - name: environment file '..' before a final line break
+        paths: {env_tns_admin: "$ORACLE_BASE/..\n", env_path_dirs: ["/usr/..\n"]}
+        rejected: [env_tns_admin, env_path_dirs]
+      - name: environment file names that merely contain dots
+        paths: {env_tns_admin: $ORACLE_BASE/admin..x/network/.admin, env_path_dirs: [/usr/bin, /opt/app..x/bin, /opt/.hidden, /opt/19.0.0.0/bin..]}
+        rejected: []
+      - {name: installer trailing '..', paths: {response_file: /u01/oracle/.., response_extra_file: /u01/..}, rejected: [response_file, response_extra_file]}
+      - name: installer inner '..'
+        paths: {response_file: /u01/oracle/../etc/db.rsp, response_extra_file: /../extra.rsp}
+        rejected: [response_file, response_extra_file]
+      - {name: installer leading and bare '..', paths: {response_file: ../db.rsp, response_extra_file: ..}, rejected: [response_file, response_extra_file]}
+      - name: installer '..' before a final line break
+        paths: {response_file: "/u01/oracle/..\n", response_extra_file: "/u01/..\n"}
+        rejected: [response_file, response_extra_file]
+      - name: installer names that merely contain dots
+        paths: {response_file: /u01/oracle/19.0.0.0/db..rsp, response_extra_file: /u01/.hidden/..extra.rsp}
+        rejected: []
   tasks:
     - name: Run the oracle_common cases
       ansible.builtin.include_tasks: tasks/common_mode_case.yml
@@ -109,11 +184,19 @@
         loop_var: path_validation_case
         label: "{{ path_validation_case.name }}"
 
+    - name: Run the oracle_database_install_role path cases
+      ansible.builtin.include_tasks: tasks/install_path_case.yml
+      loop: "{{ install_path_validation_cases }}"
+      loop_control:
+        loop_var: path_validation_case
+        label: "{{ path_validation_case.name }}"
+
     - name: Restore the baseline paths
       ansible.builtin.set_fact:
         mountpoint: "{{ path_validation_baseline.mountpoint }}"
         oracle_common_site_prefix: "{{ path_validation_baseline.oracle_common_site_prefix }}"
         oracle_common_staging_base: "{{ path_validation_baseline.oracle_common_staging_base }}"
+        oracle_common_inventory_pointer_file: "{{ install_path_validation_baseline.oracle_common_inventory_pointer_file }}"
 
     # The applied mode equals the validated one: int 420 must give 0644 on disk, not 0420 or 0777.
     - name: Apply a normalised integer mode with the file module

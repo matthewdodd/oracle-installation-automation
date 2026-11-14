@@ -147,6 +147,9 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
 - Group membership is matched exactly, using `getent group` or `lsgroup`.
 - `interpreter_python = auto_silent`. The YAML output now uses the builtin callback.
 - FQCN everywhere. Task `vars:` are dicts. `include:` was replaced.
+- The install role preflight uses the shared `..` path rule (`__oracle_common_re_dotdot`) for every path it
+  checks, instead of its own copies. A leading or bare `..` is now also reported as a `..` component (such
+  paths were already rejected as not absolute). `tests/mode_validation.yml` covers these checks.
 
 ### Removed
 
