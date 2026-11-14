@@ -196,3 +196,5 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
   symlinks, and is verified.
 - World-readable module temp files are no longer enabled globally.
 - The env file PATH no longer includes the current directory by default.
+- CI actions (`actions/checkout`, `actions/setup-python`) are pinned by full commit SHA, with the
+  release version in a trailing comment. `.github/dependabot.yml` checks the pins weekly.
