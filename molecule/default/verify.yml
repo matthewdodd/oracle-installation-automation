@@ -159,6 +159,10 @@
           - . "$1" && printf '%s\n' "$ORACLE_SID" "$ORACLE_BASE" "$ORACLE_HOME" "$PATH"
           - molecule-env-check
           - "{{ molecule_env_file }}"
+        # The variables are for bash to expand after sourcing the file, not for the module: by default it
+        # replaces $VAR in the arguments with its own environment first, so "$PATH" would print the
+        # module's PATH (unset variables such as $ORACLE_SID are left alone, which hides the problem).
+        expand_argument_vars: false
       register: molecule_env_sourced
       changed_when: false
 
