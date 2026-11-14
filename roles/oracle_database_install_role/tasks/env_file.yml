@@ -1,7 +1,10 @@
 ---
 # Environment file <oracle_common_env_dir>/<DATABASE_NAME>.env, rendered from templates/db_install.env.j2
 # (replaces the original cp + prepend through a shared temp file). tasks/preflight.yml has already
-# refused a different existing file unless oracle_database_install_role_force_env_file is true.
+# refused a different existing file unless oracle_database_install_role_force_env_file is true. Such a forced
+# overwrite first keeps a timestamped backup next to the file (<DB>.env.<pid>.<date>~, owner, group and mode
+# preserved) while oracle_database_install_role_env_file_backup is true (default). No backup is made when the
+# content is unchanged, when the file is new, or in check mode. Rollback never removes the backup.
 
 - name: Write the environment file {{ oracle_common_env_file }}
   become: true
@@ -10,6 +13,18 @@
     src: db_install.env.j2
     dest: "{{ oracle_common_env_file }}"
     mode: "{{ oracle_database_install_role_modes.env_file_mode }}"
+    backup: "{{ oracle_database_install_role_env_file_backup | bool }}"
+  register: oracle_database_install_role_env_file_result
+
+- name: Show the backup of the replaced environment file
+  when:
+    - oracle_database_install_role_safety.env_file_exists | bool
+    - oracle_database_install_role_env_file_result is changed
+  ansible.builtin.debug:
+    msg: >-
+      Previous {{ oracle_common_env_file }} saved as
+      {{ oracle_database_install_role_env_file_result.backup_file
+         | default('n/a (check mode)' if ansible_check_mode else 'n/a (oracle_database_install_role_env_file_backup is false)') }}
 
 - name: Record that this run created the environment file
   when: not (oracle_database_install_role_safety.env_file_exists | bool)

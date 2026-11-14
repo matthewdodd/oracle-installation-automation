@@ -6,7 +6,8 @@
 #   env_file / inventory_pointer / inventory_dir created by this run -> removed
 #   inventory_pointer_rewritten (forced rewrite of an existing pointer) -> its previous content is restored
 # A pre-existing (non-empty) ORACLE_HOME, central inventory or environment file is never removed (a forced
-# pointer rewrite is undone by restoring the previous pointer).
+# pointer rewrite is undone by restoring the previous pointer). A forced overwrite of an existing environment
+# file is left in place, and its backup (<DB>.env.<pid>.<date>~) is never removed.
 # When the failed home is registered in a central inventory this run did not create, it is first
 # detached (runInstaller -detachHome); if that is not possible the home is kept and a warning shown.
 # Best effort: a rollback problem is reported as a WARNING and never hides the original failure.

@@ -26,6 +26,11 @@ oracle_database_install_role_force_reinstall: "{{ oracle_force_reinstall | defau
 # An existing environment file (oracle_common_env_file) whose content differs from the one this
 # run would write is never replaced unless this is true. Follows the reinstall flag by default.
 oracle_database_install_role_force_env_file: "{{ oracle_database_install_role_force_reinstall }}"
+# When a forced replacement (above) overwrites an existing environment file with different content, its
+# previous content is first kept in a timestamped backup next to it (<DB>.env.<pid>.<date>~, owner, group
+# and mode preserved), the same way a forced oraInst.loc rewrite keeps one. Rollback never removes it.
+# Secure default: true. Set false to overwrite without a backup.
+oracle_database_install_role_env_file_backup: true
 # Central inventory. When the pointer file (oracle_common_inventory_pointer_file, /etc/oraInst.loc)
 # exists, its inventory_loc and inst_group are reused and the file is never modified.
 # When it is absent (clean target), it is created from the values below.

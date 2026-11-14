@@ -71,6 +71,9 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
   for safe characters. The defaults are the original values, so the file content is unchanged.
 - `oracle_database_install_role_force_inventory_pointer` (default false): opt-in rewrite of an existing
   `oraInst.loc`, with a backup that rollback restores.
+- `oracle_database_install_role_env_file_backup` (default true): a forced replacement of a different
+  existing `<DB>.env` first keeps a timestamped backup next to it (`<DB>.env.<pid>.<date>~`, owner, group
+  and mode preserved). Rollback never removes it.
 - `oracle_database_install_role_patch_inner_archive_patterns`: the archives inside the patch bundle that
   are extracted (default `*.zip`, `*.tar.gz`, as before).
 - Clean-target and side-by-side support:

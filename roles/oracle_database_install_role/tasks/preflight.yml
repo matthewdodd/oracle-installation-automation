@@ -390,7 +390,12 @@
            else ('reused from the existing ' ~ oracle_common_inventory_pointer_file
                  if oracle_database_install_role_safety.inventory_pointer_exists | bool
                  else oracle_common_inventory_pointer_file ~ ' will be created') }}
-      - "Environment file {{ oracle_common_env_file }}: {{ 'exists' if oracle_database_install_role_safety.env_file_exists else 'will be created' }}"
+      - >-
+        Environment file {{ oracle_common_env_file }}:
+        {{ ('exists' ~ ((' (replaced if it differs, forced, ' ~ ('backup kept' if oracle_database_install_role_env_file_backup | bool
+                                                                  else 'NO backup') ~ ')')
+                         if oracle_database_install_role_force_env_file | bool else ''))
+           if oracle_database_install_role_safety.env_file_exists else 'will be created' }}
 
 # --- Prerequisite packages ----------------------------------------------------------------
 # Per-OS list; missing packages fail here, before anything changes, unless oracle_ignore_prereqs is true.

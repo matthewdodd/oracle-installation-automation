@@ -315,7 +315,8 @@ There is no safe generic default for these, so none is shipped.
 | Variable | Default | Description |
 |---|---|---|
 | `oracle_database_install_role_force_reinstall` (alias `oracle_force_reinstall`) | `false` | Extract over an existing non-empty ORACLE_HOME (with a WARNING). |
-| `oracle_database_install_role_force_env_file` | follows `force_reinstall` | Replace an existing `<DB>.env` whose content differs. |
+| `oracle_database_install_role_force_env_file` | follows `force_reinstall` | Replace an existing `<DB>.env` whose content differs (backup kept, see below). |
+| `oracle_database_install_role_env_file_backup` | `true` | Before a forced replacement overwrites an existing `<DB>.env`, keep its previous content as `<DB>.env.<pid>.<date>~` next to it (owner, group and mode preserved). Rollback never removes it. Set `false` to overwrite without a backup. |
 | `oracle_database_install_role_force_inventory_pointer` | `false` | Rewrite an existing `oraInst.loc` that names another inventory or group (backup kept, restored on rollback). Does not follow `force_reinstall`. |
 | `oracle_database_install_role_inventory_location` | `""` | Central inventory that must be used. Empty reuses the existing one or creates the one below. When set, a pointer that names a different inventory fails the run. |
 | `oracle_database_install_role_new_inventory_location` | `<oracle_base>/oraInventory` | Inventory created on a clean target. |
@@ -453,7 +454,10 @@ Preflight decides how to proceed before anything is changed on the host.
 
 - `oracle_force_reinstall` (`oracle_database_install_role_force_reinstall`): extract over a non-empty
   home, with a WARNING. A forced home is never removed by rollback.
-- `oracle_database_install_role_force_env_file`: replace a different `<DB>.env`.
+- `oracle_database_install_role_force_env_file`: replace a different `<DB>.env`. The previous file is
+  kept as a timestamped backup next to it (`<DB>.env.<pid>.<date>~`, owner, group and mode preserved)
+  unless `oracle_database_install_role_env_file_backup: false`. Rollback leaves the replaced file and the
+  backup in place; restore the backup manually if needed.
 
 - `oracle_database_install_role_force_inventory_pointer`: rewrite an existing `/etc/oraInst.loc` that
   names another `inventory_loc` / `inst_group` than requested (the original behaviour). The requested
@@ -547,6 +551,7 @@ Persistent changes after a **successful** run:
 | Existing `/etc/oraInst.loc` rewritten, plus a backup `oraInst.loc.<pid>.<date>~` (**only with** `oracle_database_install_role_force_inventory_pointer`) | inst_group 0644 | Yes: the previous content, owner, group and mode are restored (the backup file is kept) |
 | The new home's entry in the central inventory (`ContentsXML/inventory.xml`, written by runInstaller) | Oracle installer | Yes (detached) |
 | `<site prefix>/<DB>.env` | 0755 | Yes, if this run created it |
+| Existing `<DB>.env` replaced, plus a backup `<DB>.env.<pid>.<date>~` (**only with** `oracle_database_install_role_force_env_file` and different content; no backup with `oracle_database_install_role_env_file_backup: false`) | 0755 (backup: previous owner, group and mode) | No: the replaced file and the backup are kept |
 | Files written by root.sh as root: `/etc/oratab`, `/usr/local/bin/dbhome`, `oraenv`, `coraenv` (existing copies are not overwritten) | root | No (shared files) |
 | AIX: `rootpre.sh` run as root, `<OH>/clone/root.sh` | root / 0755 | With the home |
 

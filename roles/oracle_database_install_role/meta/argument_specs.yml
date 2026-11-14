@@ -116,6 +116,11 @@ argument_specs:
       oracle_database_install_role_force_env_file:
         type: bool
         description: Replace an existing environment file whose content differs (defaults to the reinstall flag).
+      oracle_database_install_role_env_file_backup:
+        type: bool
+        description:
+          - Keep a timestamped backup (<DB>.env.<pid>.<date>~, owner, group and mode preserved) of an existing environment
+            file before a forced replacement overwrites it (default true). Rollback never removes the backup.
       oracle_database_install_role_inventory_location:
         type: str
         description:
