@@ -221,7 +221,11 @@
           - molecule_staging_stat.results[2].stat.isdir | default(false)
           - molecule_staging_stat.results[2].stat.pw_name | default('') == db_owner
           - not molecule_staging_stat.results[2].stat.woth | default(true)
-        fail_msg: "{{ molecule_staging_stat.results | map(attribute='stat') | list }}"
+        # Text around the data: a fail_msg that is only "{{ <list of stat dicts> }}" templates to a native list,
+        # which ansible-core 2.19+ rejects (fail_msg must be a string or a list of strings).
+        fail_msg: >-
+          Expected the software and script staging removed and the log directory kept (owned by {{ db_owner }},
+          not world-writable); stat by path: {{ molecule_staging_stat.results | items2dict(key_name='item', value_name='stat') }}
 
     - name: Look up the automation group
       ansible.builtin.command:
