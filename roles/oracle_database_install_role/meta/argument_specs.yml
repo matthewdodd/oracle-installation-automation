@@ -127,6 +127,12 @@ argument_specs:
         description:
           - inst_group for a new oraInst.loc. Empty (default) uses the primary group of db_owner. With an existing
             oraInst.loc its inst_group is used, and a different non-empty value fails the run.
+      oracle_database_install_role_force_inventory_pointer:
+        type: bool
+        description:
+          - Rewrite an existing oraInst.loc that names another inventory_loc / inst_group than requested (the original
+            behaviour; default false). The previous content is backed up next to it and restored if the install fails.
+            It can orphan homes registered in the old inventory and does not follow oracle_database_install_role_force_reinstall.
       oracle_database_install_role_inventory_pointer_mode:
         type: str
         description: Mode of a newly created oraInst.loc (default 0644).
@@ -139,6 +145,31 @@ argument_specs:
       oracle_database_install_role_env_path_include_cwd:
         type: bool
         description: End PATH in the environment file with "." as the original did (default false, a security risk).
+      oracle_database_install_role_env_tns_admin:
+        type: str
+        description:
+          - TNS_ADMIN written to the environment file (default $ORACLE_BASE/admin/network/admin, the original). An absolute
+            path, or one starting with $ORACLE_BASE/ or $ORACLE_HOME/, without whitespace or shell metacharacters.
+      oracle_database_install_role_env_path_dirs:
+        type: list
+        elements: str
+        description:
+          - System directories at the start of PATH in the environment file, before $ORACLE_HOME/bin and $ORACLE_HOME/OPatch
+            (default the original list /usr/bin, /usr/ccs/bin, /bin, /etc, /usr/openwin/bin, /usr/local/bin, /usr/bin,
+            /usr/ucb). Each entry is an absolute path without whitespace or shell metacharacters.
+      oracle_database_install_role_env_nls_lang:
+        type: str
+        description: NLS_LANG written to the environment file (default american_america.AL32UTF8). No spaces or shell metacharacters.
+      oracle_database_install_role_env_nls_timestamp_format:
+        type: str
+        description:
+          - NLS_TIMESTAMP_FORMAT written to the environment file (default YYYY-MM-DD-HH24.MI.SS.FF6). No quotes, $, backquotes,
+            backslashes or line breaks.
+      oracle_database_install_role_env_nls_date_format:
+        type: str
+        description:
+          - NLS_DATE_FORMAT written to the environment file (default YYYY-MM-DD-HH24.MI.SS). No quotes, $, backquotes,
+            backslashes or line breaks.
       oracle_database_install_role_home_mode:
         type: str
         description: Mode of the ORACLE_HOME directory at creation and after extraction (default 0755).
@@ -156,6 +187,12 @@ argument_specs:
         description:
           - Mode applied recursively to the extracted patch tree (default u+rwX,g+rX,g-w,o-rwx, keeps executable bits).
             Modes that give group or others write access are rejected.
+      oracle_database_install_role_patch_inner_archive_patterns:
+        type: list
+        elements: str
+        description:
+          - File-name globs of the archives inside the patch bundle that are extracted and then removed (default *.zip and
+            *.tar.gz, the original). Plain globs without a /. An empty list skips this step.
       oracle_common_artifact_checksums:
         type: dict
         description: Expected checksum per artifact file name (from oracle_common).

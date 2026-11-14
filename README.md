@@ -316,6 +316,7 @@ There is no safe generic default for these, so none is shipped.
 |---|---|---|
 | `oracle_database_install_role_force_reinstall` (alias `oracle_force_reinstall`) | `false` | Extract over an existing non-empty ORACLE_HOME (with a WARNING). |
 | `oracle_database_install_role_force_env_file` | follows `force_reinstall` | Replace an existing `<DB>.env` whose content differs. |
+| `oracle_database_install_role_force_inventory_pointer` | `false` | Rewrite an existing `oraInst.loc` that names another inventory or group (backup kept, restored on rollback). Does not follow `force_reinstall`. |
 | `oracle_database_install_role_inventory_location` | `""` | Central inventory that must be used. Empty reuses the existing one or creates the one below. When set, a pointer that names a different inventory fails the run. |
 | `oracle_database_install_role_new_inventory_location` | `<oracle_base>/oraInventory` | Inventory created on a clean target. |
 | `oracle_database_install_role_inventory_group` | `""` (primary group of `db_owner`) | `inst_group` for a new pointer. With an existing pointer, a different value fails the run. |
@@ -334,6 +335,7 @@ There is no safe generic default for these, so none is shipped.
 | `oracle_database_install_role_install_timeout` | `4000` | Seconds runInstaller may run before it is stopped and fails. |
 | `oracle_database_install_role_patch_timeout` | `4000` | Seconds OPatch may run before it is stopped and fails. |
 | `oracle_database_install_role_poll_interval` | `30` | Seconds between status checks. Polling always covers the whole timeout. |
+| `oracle_database_install_role_patch_inner_archive_patterns` | `["*.zip", "*.tar.gz"]` | Globs of the archives inside the patch bundle that are extracted and removed. An empty list skips this step. |
 
 ### oracle_database_install_role: environment file and permissions
 
@@ -345,6 +347,11 @@ normalised to `"0777"`, and rejected.
 |---|---|---|
 | `oracle_database_install_role_env_path_include_cwd` | `false` | End PATH in `<DB>.env` with `.` as the original did. This is a security risk. |
 | `oracle_database_install_role_env_file_mode` | `"0755"` | `<DB>.env`. |
+| `oracle_database_install_role_env_tns_admin` | `$ORACLE_BASE/admin/network/admin` | `TNS_ADMIN` in `<DB>.env`. An absolute path, or one starting with `$ORACLE_BASE/` or `$ORACLE_HOME/`. |
+| `oracle_database_install_role_env_path_dirs` | `[/usr/bin, /usr/ccs/bin, /bin, /etc, /usr/openwin/bin, /usr/local/bin, /usr/bin, /usr/ucb]` | System directories at the start of PATH in `<DB>.env`, before `$ORACLE_HOME/bin` and `$ORACLE_HOME/OPatch`. Absolute paths only. |
+| `oracle_database_install_role_env_nls_lang` | `american_america.AL32UTF8` | `NLS_LANG` in `<DB>.env` (written unquoted, so no spaces). |
+| `oracle_database_install_role_env_nls_timestamp_format` | `YYYY-MM-DD-HH24.MI.SS.FF6` | `NLS_TIMESTAMP_FORMAT` in `<DB>.env`. |
+| `oracle_database_install_role_env_nls_date_format` | `YYYY-MM-DD-HH24.MI.SS` | `NLS_DATE_FORMAT` in `<DB>.env`. |
 | `oracle_database_install_role_inventory_pointer_mode` | `"0644"` | A newly created `oraInst.loc`. |
 | `oracle_database_install_role_inventory_dir_mode` | `"0770"` | A newly created inventory directory. |
 | `oracle_database_install_role_home_mode` | `"0755"` | ORACLE_HOME directory. |
@@ -437,7 +444,7 @@ Preflight decides how to proceed before anything is changed on the host.
 | Item | Clean target | Existing Oracle on the host (side-by-side) |
 |---|---|---|
 | ORACLE_HOME | Created. | Absent or empty: used. **Non-empty: refused**, unless `oracle_force_reinstall: true`. For the same release as an installed home, set a new `oracle_home`, e.g. `/u01/oracle/product/19.0.0.0_2`. |
-| `/etc/oraInst.loc` | Created, with `inventory_loc=<new inventory>` and `inst_group=<group>`. | **Read and reused, never written.** The run fails if it has no valid `inventory_loc`, if an explicitly set inventory or group differs, or if `db_owner` is not in the inventory group. |
+| `/etc/oraInst.loc` | Created, with `inventory_loc=<new inventory>` and `inst_group=<group>`. | **Read and reused, never written** (unless `oracle_database_install_role_force_inventory_pointer` is set). The run fails if it has no valid `inventory_loc`, if an explicitly set inventory or group differs, or if `db_owner` is not in the inventory group. |
 | Central inventory | `oracle_database_install_role_new_inventory_location` is created (0770). | The existing one is used. The installer registers the new home in it. |
 | `<site prefix>/<DB>.env` | Created. | Other databases' files are never touched. The same name with different content is **refused**, unless `oracle_database_install_role_force_env_file` (or the reinstall flag) is set. Identical content is accepted. |
 | Downloads | `<prefix>/software/<DB>_<version>`. | Per database, so concurrent runs for other databases are not affected. |
@@ -448,7 +455,15 @@ Preflight decides how to proceed before anything is changed on the host.
   home, with a WARNING. A forced home is never removed by rollback.
 - `oracle_database_install_role_force_env_file`: replace a different `<DB>.env`.
 
-There is no flag that rewrites `/etc/oraInst.loc`. An existing pointer is always respected.
+- `oracle_database_install_role_force_inventory_pointer`: rewrite an existing `/etc/oraInst.loc` that
+  names another `inventory_loc` / `inst_group` than requested (the original behaviour). The requested
+  inventory is `oracle_database_install_role_inventory_location`, else
+  `oracle_database_install_role_new_inventory_location`, and is created if missing. The previous file is
+  kept as a timestamped backup next to it (`oraInst.loc.<pid>.<date>~`) and restored by rollback if the
+  install fails. This can hide the homes registered in the old inventory from Oracle tools, so it does
+  **not** follow `oracle_force_reinstall`; set it only when you mean to move the host to a new inventory.
+
+Without that flag an existing pointer is always respected.
 
 A rerun for a database that already installed successfully is refused at the home check (changed=0). Use
 the force flag only if you really mean to reinstall.
@@ -529,6 +544,7 @@ Persistent changes after a **successful** run:
 | `<site prefix>/software` (only if missing) | privileged user, 0755 | No |
 | ORACLE_HOME with the extracted binaries, `responseFile.rsp`, the RU/OJVM patches and maybe a newer OPatch (`OPatch.old` is kept) | `db_owner`, 0755 | Yes, if this run created it |
 | Central inventory directory and `/etc/oraInst.loc` (**clean target only**) | `db_owner`:inst_group 0770 / 0644 | Yes, if this run created them |
+| Existing `/etc/oraInst.loc` rewritten, plus a backup `oraInst.loc.<pid>.<date>~` (**only with** `oracle_database_install_role_force_inventory_pointer`) | inst_group 0644 | Yes: the previous content, owner, group and mode are restored (the backup file is kept) |
 | The new home's entry in the central inventory (`ContentsXML/inventory.xml`, written by runInstaller) | Oracle installer | Yes (detached) |
 | `<site prefix>/<DB>.env` | 0755 | Yes, if this run created it |
 | Files written by root.sh as root: `/etc/oratab`, `/usr/local/bin/dbhome`, `oraenv`, `coraenv` (existing copies are not overwritten) | root | No (shared files) |
@@ -537,7 +553,7 @@ Persistent changes after a **successful** run:
 Removed again by the run itself: the staged scripts (`<staging>/ora_ansible_scripts_<DB>`) and the
 download directory (`<site prefix>/software/<DB>_<version>`).
 
-**Never changed**: other Oracle homes, an existing `/etc/oraInst.loc`, other databases' env files, and
+**Never changed**: other Oracle homes, an existing `/etc/oraInst.loc` (unless forced), other databases' env files, and
 installed packages. The playbook only checks packages; it does not install any. No database is created,
 so `datapatch` is not run.
 
@@ -551,7 +567,9 @@ this run created, as recorded in `oracle_database_install_role_created`:
 - if the failed home is registered in an inventory this run did not create, it is first detached with
   `<home>/oui/bin/runInstaller -silent -waitforcompletion -detachHome`. If that fails, the home is kept
   and a WARNING is shown, so that the shared inventory never ends up with a dangling entry;
-- the env file, `oraInst.loc` and the inventory directory are removed if this run created them.
+- the env file, `oraInst.loc` and the inventory directory are removed if this run created them;
+- an `oraInst.loc` rewritten with `oracle_database_install_role_force_inventory_pointer` gets its previous
+  content, owner, group and mode back.
 
 The rollback is best effort. A rollback problem is a WARNING and never hides the original error. Set
 `oracle_database_install_role_rollback_on_failure: false` to keep everything for troubleshooting.
@@ -662,14 +680,14 @@ that already has an Oracle home, to see the refusals, and a clean host, for a fu
 |---|---|
 | `target is required` | Pass `-e target=<host>[,<host>...]`. |
 | `Invalid or missing inputs: ...` | Every listed input failed validation; the message says what is expected. Secret values are never shown. |
-| `Validation of arguments failed: missing required arguments: ...`, or `'mountpoint' is undefined` (the latter appears when `mountpoint` or `db_owner` is missing, because derived defaults are templated before the list is printed) | A required job or environment input is missing. Often the `target` host is not in the `oracle_db_servers` group: pass `-e ansible_inventory_groups=oracle_db_servers` or add the host to `hosts.yml`. |
+| `Validation of arguments failed: missing required arguments: ...` | A required job or environment input is missing. Often the `target` host is not in the `oracle_db_servers` group: pass `-e ansible_inventory_groups=oracle_db_servers` or add the host to `hosts.yml`. |
 | `Failed: OS not supported (<system>)` | The kernel is not in `oracle_common_supported_systems`, or there is no `vars/<system>.yml`. |
 | `The module interpreter ... was not found` / Python version errors | The target needs Python 3.9 or later. Set `ansible_python_interpreter` (see [Supported platforms](#supported-platforms-and-oracle-versions)). |
 | `Host key verification failed` | Add the host key to `known_hosts` (see [Security defaults](#security-defaults)). |
 | `Failed to set permissions on the temporary files Ansible needs to create when becoming an unprivileged user` | Install `acl`, set `ansible_common_remote_group`, or connect as root. |
 | ORACLE_HOME `exists and is not empty` | That home is in use. For a side-by-side install, set a new `oracle_home`. To reinstall on purpose, set `oracle_force_reinstall: true`. |
 | Environment file differs | Another run wrote `<DB>.env` with other content (for example an older run with `.` in PATH). Check it, then force it or align the settings. |
-| Inventory pointer / group mismatch, or `db_owner` not in the inventory group | The existing `/etc/oraInst.loc` is never rewritten. Add `db_owner` to its `inst_group`, or clear the explicit inventory settings. |
+| Inventory pointer / group mismatch, or `db_owner` not in the inventory group | The existing `/etc/oraInst.loc` is not rewritten by default. Add `db_owner` to its `inst_group`, or clear the explicit inventory settings, or (only if you mean to move the host to another inventory) set `oracle_database_install_role_force_inventory_pointer: true`. |
 | `Missing prerequisite packages on <host> (N): ...` | Install them (nothing was changed on the host), or set `oracle_ignore_prereqs: true` knowingly. |
 | `no checksum for ...` / checksum mismatch | Add the correct digest to `oracle_common_artifact_checksums`. A mismatch means the file differs from the one you recorded. |
 | `Download of <file> failed (HTTP ...)` | Check the repository URL, credentials, CA bundle and proxy settings. The URL and password are redacted in the message. |

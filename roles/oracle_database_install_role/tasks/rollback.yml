@@ -4,7 +4,9 @@
 #   home           ORACLE_HOME directory created by this run      -> removed
 #   home_contents  ORACLE_HOME was an empty, pre-existing directory -> its content is removed, the directory kept
 #   env_file / inventory_pointer / inventory_dir created by this run -> removed
-# A pre-existing (non-empty) ORACLE_HOME, central inventory or environment file is never touched.
+#   inventory_pointer_rewritten (forced rewrite of an existing pointer) -> its previous content is restored
+# A pre-existing (non-empty) ORACLE_HOME, central inventory or environment file is never removed (a forced
+# pointer rewrite is undone by restoring the previous pointer).
 # When the failed home is registered in a central inventory this run did not create, it is first
 # detached (runInstaller -detachHome); if that is not possible the home is kept and a warning shown.
 # Best effort: a rollback problem is reported as a WARNING and never hides the original failure.
@@ -128,12 +130,23 @@
         path: "{{ oracle_database_install_role_safety.inventory_location }}"
         state: absent
 
+    # Last, so that a problem restoring ownership does not stop the removals above.
+    - name: Restore the central inventory pointer rewritten by this run
+      when: oracle_database_install_role_created.inventory_pointer_rewritten | default(false)
+      ansible.builtin.copy:
+        dest: "{{ oracle_common_inventory_pointer_file }}"
+        content: "{{ oracle_database_install_role_safety.existing_inventory_pointer.content | b64decode }}"
+        owner: "{{ oracle_database_install_role_safety.existing_inventory_pointer.owner | default(omit, true) }}"
+        group: "{{ oracle_database_install_role_safety.existing_inventory_pointer.group | default(omit, true) }}"
+        mode: "{{ oracle_database_install_role_safety.existing_inventory_pointer.mode | default(omit, true) }}"
+
     - name: Clear the record of what this run created
       ansible.builtin.set_fact:
         oracle_database_install_role_created:
           home: false
           home_contents: false
           inventory_pointer: false
+          inventory_pointer_rewritten: false
           inventory_dir: false
           env_file: false
   rescue:

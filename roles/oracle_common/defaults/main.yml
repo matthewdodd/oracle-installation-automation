@@ -49,7 +49,10 @@ oracle_common_group_membership_become_user: root
 # Any override must be a directory db_owner can create entries in; the staging directories are
 # created as db_owner (never through a symlink) and then verified to be owned by db_owner and not
 # group/world-writable, so a pre-created or foreign directory stops the run.
-oracle_common_staging_base: "{{ mountpoint }}/{{ db_owner }}/ansible_staging"
+# (Guarded so that a missing mountpoint / db_owner is reported by the argument-spec check as a missing
+# required input, instead of failing earlier with "'mountpoint' is undefined" while the spec is evaluated.)
+oracle_common_staging_base: >-
+  {{ (mountpoint ~ '/' ~ db_owner ~ '/ansible_staging') if (mountpoint is defined and db_owner is defined) else '' }}
 # Per-database script and log directories. The original names remote_script_directory,
 # remote_output_directory and script_permission are accepted as aliases.
 oracle_common_remote_script_directory: >-

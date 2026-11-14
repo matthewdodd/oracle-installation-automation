@@ -3,10 +3,13 @@
 # Uses oracle_database_install_role_safety from tasks/preflight.yml.
 #   Pointer present (side-by-side): reused as it is; never truncated or rewritten.
 #   Pointer absent (clean target):  the inventory directory and the pointer are created.
+#   Forced rewrite (oracle_database_install_role_force_inventory_pointer, opt-in): the pointer is rewritten with
+#   a backup, and the requested inventory directory is created when missing; rollback restores the old content.
 
 - name: Create the central inventory directory {{ oracle_database_install_role_safety.inventory_location }}
   when:
     - not (oracle_database_install_role_safety.inventory_pointer_exists | bool)
+      or (oracle_database_install_role_safety.inventory_pointer_rewrite | bool)
     - not (oracle_database_install_role_safety.inventory_dir_exists | bool)
   become: true
   become_user: "{{ oracle_common_privileged_user }}"
@@ -44,6 +47,33 @@
     oracle_database_install_role_created: >-
       {{ oracle_database_install_role_created
          | combine({'inventory_pointer': oracle_database_install_role_pointer_result is changed}) }}
+
+- name: Rewrite the existing central inventory pointer (forced) {{ oracle_common_inventory_pointer_file }}
+  when: oracle_database_install_role_safety.inventory_pointer_rewrite | bool
+  become: true
+  become_user: "{{ oracle_common_privileged_user }}"
+  ansible.builtin.copy:
+    dest: "{{ oracle_common_inventory_pointer_file }}"
+    content: |
+      inst_group={{ oracle_database_install_role_safety.inventory_group }}
+      inventory_loc={{ oracle_database_install_role_safety.inventory_location }}
+    backup: true
+    group: "{{ oracle_database_install_role_safety.inventory_group }}"
+    mode: "{{ oracle_database_install_role_modes.inventory_pointer_mode }}"
+  register: oracle_database_install_role_pointer_rewrite_result
+
+- name: Record whether this run rewrote the central inventory pointer
+  ansible.builtin.set_fact:
+    oracle_database_install_role_created: >-
+      {{ oracle_database_install_role_created
+         | combine({'inventory_pointer_rewritten': oracle_database_install_role_pointer_rewrite_result is changed}) }}
+
+- name: Show the backup of the rewritten central inventory pointer
+  when: oracle_database_install_role_created.inventory_pointer_rewritten | bool
+  ansible.builtin.debug:
+    msg: >-
+      Previous {{ oracle_common_inventory_pointer_file }} saved as
+      {{ oracle_database_install_role_pointer_rewrite_result.backup_file | default('n/a (check mode)') }}
 
 - name: Read {{ oracle_common_inventory_pointer_file }}
   become: true

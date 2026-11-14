@@ -37,6 +37,13 @@ oracle_database_install_role_new_inventory_location: "{{ oracle_database_install
 # inst_group for a new pointer file. Empty: the primary group of db_owner (the original behaviour).
 # With an existing pointer, its inst_group is used; a different non-empty value fails the run.
 oracle_database_install_role_inventory_group: ""
+# Opt-in for the original behaviour of rewriting an existing pointer file: when true and the existing
+# pointer names another inventory_loc / inst_group than requested (oracle_database_install_role_inventory_location,
+# else oracle_database_install_role_new_inventory_location; oracle_database_install_role_inventory_group, else the
+# primary group of db_owner), the pointer is rewritten. Its previous content is kept in a timestamped backup
+# next to it and is restored if the install fails. Rewriting the pointer can orphan the Oracle homes registered
+# in the old inventory, so this does NOT follow oracle_database_install_role_force_reinstall. Default false.
+oracle_database_install_role_force_inventory_pointer: false
 oracle_database_install_role_inventory_pointer_mode: "0644"
 oracle_database_install_role_inventory_dir_mode: "0770"
 # Mode of the environment file (the original ran chmod 0755 on it).
@@ -45,6 +52,24 @@ oracle_database_install_role_env_file_mode: "0755"
 # in any working directory run instead of a system or Oracle binary. Secure default: left out.
 # Set true to keep the original PATH exactly.
 oracle_database_install_role_env_path_include_cwd: false
+# Site conventions written into the environment file. The defaults are the original values, so the
+# file is unchanged unless they are overridden. The file is sourced by a shell, so preflight only accepts
+# safe characters: TNS_ADMIN is an absolute path or $ORACLE_BASE/... / $ORACLE_HOME/...; each PATH entry
+# is an absolute directory (written before $ORACLE_HOME/bin and $ORACLE_HOME/OPatch); NLS_LANG has no
+# spaces (it is written unquoted, as before); the NLS formats have no quotes, $, backquotes or backslashes.
+oracle_database_install_role_env_tns_admin: "$ORACLE_BASE/admin/network/admin"
+oracle_database_install_role_env_path_dirs:
+  - /usr/bin
+  - /usr/ccs/bin
+  - /bin
+  - /etc
+  - /usr/openwin/bin
+  - /usr/local/bin
+  - /usr/bin
+  - /usr/ucb
+oracle_database_install_role_env_nls_lang: american_america.AL32UTF8
+oracle_database_install_role_env_nls_timestamp_format: "YYYY-MM-DD-HH24.MI.SS.FF6"
+oracle_database_install_role_env_nls_date_format: "YYYY-MM-DD-HH24.MI.SS"
 # After a failed install, remove what this run created: an ORACLE_HOME it created (or filled when
 # it was empty), and an environment file, inventory pointer or inventory directory it created.
 # Pre-existing homes, inventories and environment files are never removed.
@@ -80,6 +105,12 @@ oracle_database_install_role_download_parent_mode: "0755"
 # Applied recursively to the extracted patch tree (owner db_owner): symbolic, so the executable bits
 # shipped in the patch archives (OPatch, scripts) are kept; group/others never get write access.
 oracle_database_install_role_extracted_mode: "u+rwX,g+rX,g-w,o-rwx"
+# File-name globs of the archives inside the patch bundle (top level of install_folder_name) that are
+# extracted and then removed, e.g. the RU and OJVM zips (original: *.zip and *.tar.gz). An empty list
+# skips this step.
+oracle_database_install_role_patch_inner_archive_patterns:
+  - "*.zip"
+  - "*.tar.gz"
 # AIX: mode of <ORACLE_HOME>/clone/root.sh, the copy of rootpre.sh the root wrapper runs (original 0755).
 oracle_database_install_role_root_script_mode: "0755"
 

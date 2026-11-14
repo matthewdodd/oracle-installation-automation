@@ -11,8 +11,8 @@ permissions:
 jobs:
   lint:
     runs-on: ubuntu-latest
-    # Non-blocking until the baseline is clean (resolution plan step 30 makes it required).
-    continue-on-error: true
+    # Blocking: the baseline is clean (ansible-lint production, yamllint, shellcheck, syntax-check).
+    # Making this job a required status check on main is a branch-protection setting (plan step 30).
     steps:
       - uses: actions/checkout@v4
 

@@ -113,8 +113,9 @@
         - name: Find the archives inside the patch bundle
           ansible.builtin.find:
             paths: "{{ __oracle_database_install_role_download_dir }}"
-            patterns: '*.zip,*.tar.gz'
+            patterns: "{{ oracle_database_install_role_patch_inner_archive_patterns }}"
           register: oracle_database_install_role_patch_archives
+          when: oracle_database_install_role_patch_inner_archive_patterns | length > 0
 
         - name: Extract the archives inside the patch bundle
           ansible.builtin.unarchive:
@@ -123,7 +124,7 @@
             dest: "{{ __oracle_database_install_role_download_dir }}"
             owner: "{{ db_owner }}"
             group: "{{ __oracle_database_install_role_owner_group }}"
-          loop: "{{ oracle_database_install_role_patch_archives.files }}"
+          loop: "{{ oracle_database_install_role_patch_archives.files | default([]) }}"
           loop_control:
             label: "{{ item.path }}"
 
@@ -131,7 +132,7 @@
           ansible.builtin.file:
             state: absent
             path: "{{ item.path }}"
-          loop: "{{ oracle_database_install_role_patch_archives.files }}"
+          loop: "{{ oracle_database_install_role_patch_archives.files | default([]) }}"
           loop_control:
             label: "{{ item.path }}"
 

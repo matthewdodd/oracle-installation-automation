@@ -40,7 +40,9 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
   `<prefix>/software/<version>`.
 - **Existing Oracle software is protected.**
   - A non-empty `ORACLE_HOME` is refused (set `oracle_force_reinstall: true` to override).
-  - An existing `/etc/oraInst.loc` is reused and never rewritten.
+  - An existing `/etc/oraInst.loc` is reused and not rewritten (set
+    `oracle_database_install_role_force_inventory_pointer: true` for the original rewrite, with a backup
+    that rollback restores).
   - A different existing `<DB>.env` is refused (set `oracle_database_install_role_force_env_file`).
   - A second run for a database that is already installed is therefore refused.
 - **`database_version` has an allow-list** (`19.0.0.0`, `12.2.0.1`, `12.1.0.2`). Unknown values no longer
@@ -64,6 +66,13 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
   - the Teams notification, failure recording and reporting, and best-effort staging removal.
 - `meta/argument_specs.yml` for every role (all inputs, types, defaults, aliases) and `meta/main.yml`
   (platforms EL 7/8/9 and AIX, `min_ansible_version` 2.22).
+- `oracle_database_install_role_env_tns_admin`, `_env_path_dirs`, `_env_nls_lang`,
+  `_env_nls_timestamp_format` and `_env_nls_date_format`: the site conventions in `<DB>.env`, validated
+  for safe characters. The defaults are the original values, so the file content is unchanged.
+- `oracle_database_install_role_force_inventory_pointer` (default false): opt-in rewrite of an existing
+  `oraInst.loc`, with a backup that rollback restores.
+- `oracle_database_install_role_patch_inner_archive_patterns`: the archives inside the patch bundle that
+  are extracted (default `*.zip`, `*.tar.gz`, as before).
 - Clean-target and side-by-side support:
   - read-only host preflight (`tasks/preflight.yml`);
   - central inventory reuse or creation (`tasks/inventory.yml`), with
@@ -160,6 +169,8 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
 - Polling no longer gives up (after 3600 s) before the async limit (4000 s).
 - `remote_output_directory` has one consistent definition.
 - The play no longer aborts on an undefined `target`, or on missing `tower_*` variables outside AAP.
+- A missing `mountpoint` or `db_owner` is reported in the list of missing required arguments, instead of
+  as `'mountpoint' is undefined`.
 
 ### Security
 
