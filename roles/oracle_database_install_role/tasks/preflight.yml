@@ -49,6 +49,32 @@
          + (['oracle_home must not be inside install_folder_name, which cleanup removes']
             if ((oracle_home | string) ~ '/').startswith((install_folder_name | string) ~ '/') else []) }}
 
+# Values passed to database_install.bash through its environment (it also rejects line breaks itself).
+- name: Validate the installer inputs
+  ansible.builtin.assert:
+    that: __oracle_database_install_role_installer_errors | length == 0
+    fail_msg: "Invalid installer inputs: {{ __oracle_database_install_role_installer_errors | join(' | ') }}"
+    quiet: true
+  vars:
+    __oracle_database_install_role_installer_errors: >-
+      {{ (['oracle_database_install_role_install_edition must be an Oracle edition code such as EE or SE2']
+          if not (oracle_database_install_role_install_edition | string) is match('\A[A-Z][A-Z0-9_]*\Z') else [])
+         + (['oracle_database_install_role_install_option must be an oracle.install.option value such as INSTALL_DB_SWONLY']
+            if not (oracle_database_install_role_install_option | string) is match('\A[A-Z][A-Z0-9_]*\Z') else [])
+         + (['oracle_database_install_role_os_group must be a POSIX group name, or empty']
+            if (oracle_database_install_role_os_group | string | length > 0)
+               and not (oracle_database_install_role_os_group | string) is match(__oracle_common_re_posix_name) else [])
+         + (['oracle_database_install_role_response_file must be an absolute path without shell metacharacters, or empty']
+            if (oracle_database_install_role_response_file | string | length > 0)
+               and not ((oracle_database_install_role_response_file | string) is match(__oracle_common_re_abs_path)
+                        and (oracle_database_install_role_response_file | string) is not search('/\.\.(/|\Z)')) else [])
+         + (['oracle_database_install_role_response_extra_file must be an absolute path without shell metacharacters, or empty']
+            if (oracle_database_install_role_response_extra_file | string | length > 0)
+               and not ((oracle_database_install_role_response_extra_file | string) is match(__oracle_common_re_abs_path)
+                        and (oracle_database_install_role_response_extra_file | string) is not search('/\.\.(/|\Z)')) else [])
+         + (['oracle_database_install_role_ignore_prereqs (alias oracle_ignore_prereqs) must be true or false']
+            if (oracle_database_install_role_ignore_prereqs | string | lower) not in ['true', 'false', 'yes', 'no', '1', '0'] else []) }}
+
 # Permission modes (normalised, no group/world write) and artifact checksums.
 - name: Validate the permission and download integrity inputs
   ansible.builtin.import_tasks: validate_security_inputs.yml
@@ -286,3 +312,8 @@
            if oracle_database_install_role_safety.inventory_pointer_exists | bool
            else oracle_common_inventory_pointer_file ~ ' will be created' }}
       - "Environment file {{ oracle_common_env_file }}: {{ 'exists' if oracle_database_install_role_safety.env_file_exists else 'will be created' }}"
+
+# --- Prerequisite packages ----------------------------------------------------------------
+# Per-OS list; missing packages fail here, before anything changes, unless oracle_ignore_prereqs is true.
+- name: Check the prerequisite packages
+  ansible.builtin.include_tasks: prereqs.yml

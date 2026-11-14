@@ -1,0 +1,33 @@
+---
+# Red Hat family release 8 (RHEL 8, Oracle Linux 8 and rebuilds).
+# Prerequisite packages for Oracle Database 19c on release 8 (Oracle Database Installation Guide for
+# Linux, "Package requirements"). compat-libcap1 and compat-libstdc++-33 do not exist on release 8.
+# Check the guide for your exact release update and override oracle_common_prereq_packages if needed.
+__oracle_common_prereq_packages:
+  - bc
+  - binutils
+  - elfutils-libelf
+  - elfutils-libelf-devel
+  - fontconfig-devel
+  - glibc
+  - glibc-devel
+  - ksh
+  - libaio
+  - libaio-devel
+  - libibverbs
+  - libnsl
+  - librdmacm
+  - libX11
+  - libXau
+  - libXi
+  - libXrender
+  - libXtst
+  - libgcc
+  - libstdc++
+  - libstdc++-devel
+  - libxcb
+  - make
+  - policycoreutils
+  - policycoreutils-python-utils
+  - smartmontools
+  - sysstat

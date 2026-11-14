@@ -17,7 +17,8 @@
 #   oracle_common_artifactory_url    repository URL that holds one folder per Oracle release,
 #                                    e.g. https://artifactory.example.com/artifactory/release/oracledatabase
 #   oracle_common_site_prefix        site directory for <DB>.env files and software staging, e.g. /local
-#   oracle_common_root_wrapper_path  privileged wrapper that runs root.sh / rootpre.sh
+#   oracle_common_root_wrapper_path  privileged wrapper that runs root.sh / rootpre.sh; only while
+#                                    oracle_common_root_script_method is wrapper (the default)
 #   oracle_common_group_name         OS group db_owner and b_user join (the original input name
 #                                    GROUP_NAME is still accepted); only while
 #                                    oracle_common_manage_group_membership is true
@@ -116,10 +117,37 @@ oracle_common_patch_file_name_fallback: >-
 # Used by the Teams notification, and by downloads when oracle_common_artifactory_use_proxy is true.
 oracle_common_https_proxy: ""
 
-# --- Root scripts -------------------------------------------------------------------------
-# oracle_common_root_wrapper_path is required (see above).
-# Seconds the expect dialogue waits for each wrapper prompt.
+# --- Root scripts (root.sh, and rootpre.sh on AIX) -----------------------------------------
+# How the root scripts run:
+#   wrapper  the original flow: an expect dialogue drives the site root wrapper menu
+#            (oracle_common_root_wrapper_path, run as b_user). The dialogue fails on a timeout, on the
+#            wrapper ending early and on an unexpected prompt (roles/oracle_database_install_role/files/root_wrapper.exp).
+#   become   run <ORACLE_HOME>/root.sh (AIX: <ORACLE_HOME>/clone/rootpre.sh) directly through become as
+#            oracle_common_root_script_become_user, e.g. cloud hosts without the wrapper.
+# The short name oracle_root_script_method (e.g. an AAP survey variable) is accepted as an alias.
+oracle_common_root_script_method: "{{ oracle_root_script_method | default('wrapper') }}"
+# oracle_common_root_wrapper_path is required while the method is wrapper (see above).
+# Seconds the expect dialogue waits for each wrapper prompt (including while root.sh runs).
 oracle_common_root_wrapper_timeout: 300
+# Fail when the wrapper exits non-zero after the dialogue (the original ignored it).
+oracle_common_root_wrapper_check_exit_status: true
+# While root.sh runs under the wrapper, questions matching this regex (Tcl syntax) are answered with
+# ENTER, i.e. root.sh's own default: keep /usr/local/bin and do not overwrite an existing
+# dbhome/oraenv/coraenv (another Oracle home's copies on a side-by-side host). Any other y/n question is
+# an unexpected prompt and fails the run. Empty: no question is answered.
+oracle_common_root_wrapper_accept_default_regex: 'Enter the full pathname of the local bin directory|Overwrite it\? \(y/n\)'
+# become method: account that runs the script, extra arguments, and the standard input. Each newline
+# accepts a default answer, as above.
+oracle_common_root_script_become_user: root
+oracle_common_root_script_args: []
+oracle_common_root_script_stdin: "\n\n\n\n"
+# Success check for both methods, on the script / wrapper output (Python regex, searched):
+#   failure regex  - must not match (empty: not checked)
+#   success regex  - must match (empty: not checked); root.sh prints the line below in 11.2 - 21c.
+#                    Set it empty if your wrapper does not show the root.sh output.
+oracle_common_root_script_failure_regex: '(?i)\b(error|failed|failure)\b|permission denied'
+oracle_common_root_sh_success_regex: 'Finished running generic part of root script'
+oracle_common_rootpre_success_regex: ""
 
 # --- Teams notification (Teams Workflows webhook) -----------------------------------------
 # The webhook URL is a bearer secret: supply it from Ansible Vault or an AAP credential.
@@ -161,7 +189,12 @@ oracle_common_group_add_command: "{{ __oracle_common_group_add_command }}"
 oracle_common_group_members_command: "{{ __oracle_common_group_members_command }}"
 oracle_common_group_members_regex: "{{ __oracle_common_group_members_regex }}"
 oracle_common_run_rootpre: "{{ __oracle_common_run_rootpre }}"
+# Prerequisite packages (or AIX filesets) that must be installed; an empty list skips the check.
+# They are read with package_facts (oracle_common_package_manager), or, when the query command is set,
+# by running it read-only and capturing one name per match of the query regex (AIX: lslpp -Lc).
 oracle_common_package_manager: "{{ __oracle_common_package_manager }}"
+oracle_common_package_query_command: "{{ __oracle_common_package_query_command }}"
+oracle_common_package_query_regex: "{{ __oracle_common_package_query_regex }}"
 oracle_common_prereq_packages: "{{ __oracle_common_prereq_packages }}"
 # Oracle central inventory pointer (oraInst.loc). Read and reused when present, created only when absent.
 oracle_common_inventory_pointer_file: "{{ __oracle_common_inventory_pointer_file }}"

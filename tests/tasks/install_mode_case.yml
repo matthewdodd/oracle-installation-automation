@@ -16,6 +16,7 @@
         oracle_database_install_role_inventory_pointer_mode: "{{ mode_validation_case.modes.inventory_pointer_mode | default('0644') }}"
         oracle_database_install_role_inventory_dir_mode: "{{ mode_validation_case.modes.inventory_dir_mode | default('0770') }}"
         oracle_database_install_role_extracted_mode: "{{ mode_validation_case.modes.extracted_mode | default('u+rwX,g+rX,g-w,o-rwx') }}"
+        oracle_database_install_role_root_script_mode: "{{ mode_validation_case.modes.root_script_mode | default('0755') }}"
   rescue:
     - name: Keep the validation errors
       ansible.builtin.set_fact:
@@ -37,7 +38,7 @@
          | regex_replace('\AInvalid security inputs: ', '') | split(' | ') }}
     __mode_validation_actual: >-
       {{ ['home_mode', 'download_dir_mode', 'download_file_mode', 'download_parent_mode', 'env_file_mode',
-          'inventory_pointer_mode', 'inventory_dir_mode', 'extracted_mode']
+          'inventory_pointer_mode', 'inventory_dir_mode', 'extracted_mode', 'root_script_mode']
          | select('in', __mode_validation_errors | map('regex_search', '\A\S+') | map('default', '', true)
                         | map('regex_replace', '\Aoracle_database_install_role_', '') | list)
          | sort }}

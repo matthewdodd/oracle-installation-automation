@@ -12,7 +12,11 @@ __oracle_common_group_members_command: [/usr/bin/getent, group]
 __oracle_common_group_members_regex: '\A[^:]*:[^:]*:[^:]*:(.*)\Z'
 __oracle_common_run_rootpre: false
 # No package check unless a more specific file defines one (the original checked RHEL only).
+# The installed packages are read with package_facts (manager below), unless a package query command
+# is set: <command...> is run read-only and the regex (multiline) captures one package name per match.
 __oracle_common_package_manager: ""
+__oracle_common_package_query_command: []
+__oracle_common_package_query_regex: ""
 __oracle_common_prereq_packages: []
 # Central inventory pointer file (Oracle's oraInst.loc location on this platform).
 __oracle_common_inventory_pointer_file: /etc/oraInst.loc

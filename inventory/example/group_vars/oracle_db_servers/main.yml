@@ -23,7 +23,10 @@ ansible_user: ansible_svc
 # --- Required environment inputs ----------------------------------------------------------
 oracle_common_artifactory_url: https://artifactory.example.com/artifactory/release/oracledatabase
 oracle_common_site_prefix: /local
+# Site root wrapper that runs root.sh / rootpre.sh (required while the method below is wrapper).
 oracle_common_root_wrapper_path: /usr/local/bin/root-wrapper
+# Hosts without the wrapper (e.g. cloud): run root.sh directly through become as root instead.
+# oracle_common_root_script_method: become
 # OS group db_owner and b_user join (the original variable name GROUP_NAME is also accepted).
 oracle_common_group_name: oracle_automation
 # Set false where group membership is managed elsewhere (the group is then not needed).
@@ -75,6 +78,13 @@ oracle_common_artifact_checksums:
 # oracle_database_install_role_env_path_include_cwd: false
 # Keep what a failed run created, for troubleshooting (default: remove it).
 # oracle_database_install_role_rollback_on_failure: true
+
+# --- Installer (roles/oracle_database_install_role/defaults/main.yml) -----------------------
+# Missing prerequisite packages (per-OS list, roles/oracle_common/vars/) fail the run. Setting this
+# continues knowingly and passes -ignorePrereq to the installer; prefer a per-job extra var.
+# oracle_ignore_prereqs: false
+# oracle_database_install_role_install_edition: EE
+# oracle_database_install_role_os_group: dba
 
 # --- Secrets (Ansible Vault) --------------------------------------------------------------
 # Keep secrets in an encrypted vault.yml next to this file; see vault.yml.example. Map them here

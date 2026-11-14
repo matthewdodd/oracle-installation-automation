@@ -1,0 +1,30 @@
+---
+# Red Hat family release 7 (RHEL 7, Oracle Linux 7 and rebuilds).
+# Prerequisite packages: the list the original playbook computed (Oracle Database 19c / 12c on RHEL 7).
+__oracle_common_prereq_packages:
+  - bc
+  - binutils
+  - compat-libcap1
+  - compat-libstdc++-33
+  - elfutils-libelf
+  - elfutils-libelf-devel
+  - fontconfig-devel
+  - glibc
+  - glibc-devel
+  - ksh
+  - libaio
+  - libaio-devel
+  - libX11
+  - libXau
+  - libXi
+  - libXtst
+  - libXrender
+  - libXrender-devel
+  - libgcc
+  - libstdc++
+  - libstdc++-devel
+  - libxcb
+  - make
+  - smartmontools
+  - sysstat
+  - xorg-x11-xauth

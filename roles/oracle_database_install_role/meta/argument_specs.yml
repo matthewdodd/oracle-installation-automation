@@ -6,8 +6,9 @@ argument_specs:
     short_description: Download, install and patch Oracle Database software (software-only install).
     description:
       - Downloads the binaries for database_version from <oracle_common_artifactory_url>/<artf_ver>,
-        installs them into oracle_home (default <mountpoint>/<db_owner>/product/<database_version>), runs root.sh
-        through the root wrapper, then applies the patch bundle patch_file_name.
+        checks the per-OS prerequisite packages, installs them into oracle_home (default
+        <mountpoint>/<db_owner>/product/<database_version>), runs root.sh through the root wrapper or directly through
+        become (oracle_common_root_script_method) and verifies it, then applies the patch bundle patch_file_name.
       - Safe on a clean target and next to existing Oracle software (side-by-side). tasks/preflight.yml refuses an
         existing non-empty ORACLE_HOME and a different existing environment file unless forced; the central inventory
         pointer (oraInst.loc) is reused when present and created only when absent, never rewritten.
@@ -42,8 +43,39 @@ argument_specs:
         description: Site directory for <DB>.env files and software staging.
       oracle_common_root_wrapper_path:
         type: str
-        required: true
-        description: Privileged wrapper that runs root.sh / rootpre.sh.
+        description: Privileged wrapper that runs root.sh / rootpre.sh; required while oracle_common_root_script_method is wrapper.
+      oracle_common_root_script_method:
+        type: str
+        choices: [wrapper, become]
+        description:
+          - wrapper (default, alias oracle_root_script_method) drives the site root wrapper with expect; become runs root.sh
+            (AIX also clone/rootpre.sh) directly as oracle_common_root_script_become_user. Both verify success (from oracle_common).
+      oracle_database_install_role_ignore_prereqs:
+        type: bool
+        description:
+          - Continue although prerequisite packages are missing, and pass -ignorePrereq to the installer (default false; the
+            missing packages fail the run before anything changes). Defaults to oracle_ignore_prereqs, a short alias.
+      oracle_ignore_prereqs:
+        type: bool
+        description: Short alias of oracle_database_install_role_ignore_prereqs.
+      oracle_database_install_role_install_edition:
+        type: str
+        description: oracle.install.db.InstallEdition (default EE).
+      oracle_database_install_role_install_option:
+        type: str
+        description: oracle.install.option (default INSTALL_DB_SWONLY).
+      oracle_database_install_role_os_group:
+        type: str
+        description: Group for UNIX_GROUP_NAME and every OS*_GROUP key. Empty (default) uses the primary group of db_owner.
+      oracle_database_install_role_response_file:
+        type: str
+        description: Response file path on the target. Empty (default) uses <ORACLE_HOME>/responseFile.rsp.
+      oracle_database_install_role_response_extra_file:
+        type: str
+        description: Optional file on the target with extra key=value lines appended to the generated response file.
+      oracle_database_install_role_root_script_mode:
+        type: str
+        description: AIX - mode of clone/root.sh, the rootpre.sh copy run by the root wrapper (default 0755; no group/world write).
       b_user:
         type: str
         description: Privileged account used through become (default root, from oracle_common).
@@ -120,10 +152,11 @@ argument_specs:
           - After a failed install, remove what this run created (default true). Pre-existing homes, inventories and
             environment files are never removed.
   preflight:
-    short_description: Read-only production-host safety checks (ORACLE_HOME, central inventory, environment file).
+    short_description: Read-only production-host safety checks (ORACLE_HOME, central inventory, environment file, packages).
     description:
       - Fails before anything changes when ORACLE_HOME exists and is not empty, or the environment file exists with other
         content, unless forced. Works out the central inventory to reuse (side-by-side) or create (clean target).
+      - Fails when prerequisite packages from the per-OS list are missing, unless oracle_ignore_prereqs is true.
       - Sets the facts oracle_database_install_role_safety and oracle_database_install_role_created.
     options: *oracle_database_install_role_main_options
   rollback:

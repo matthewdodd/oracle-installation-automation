@@ -36,19 +36,20 @@
         normalised: {oracle_common_staging_dir_mode: "0700", oracle_common_staging_parent_mode: "0644"}
         rejected: []
     mode_validation_install_cases:
-      - {name: string defaults, modes: {}, normalised: {extracted_mode: "u+rwX,g+rX,g-w,o-rwx", home_mode: "0755"}, rejected: []}
+      - {name: string defaults, modes: {}, normalised: {extracted_mode: "u+rwX,g+rX,g-w,o-rwx", home_mode: "0755", root_script_mode: "0755"},
+         rejected: []}
       - {name: int 511 extracted tree, modes: {extracted_mode: 511}, normalised: {extracted_mode: "0777"}, rejected: [extracted_mode]}
       - {name: int 420 extracted tree, modes: {extracted_mode: 420}, normalised: {extracted_mode: "0644"}, rejected: []}
       - name: int 511 everywhere
         modes: {home_mode: 511, download_dir_mode: 511, download_file_mode: 511, download_parent_mode: 511, env_file_mode: 511,
-                inventory_pointer_mode: 511, inventory_dir_mode: 511}
-        normalised: {home_mode: "0777", inventory_dir_mode: "0777"}
+                inventory_pointer_mode: 511, inventory_dir_mode: 511, root_script_mode: 511}
+        normalised: {home_mode: "0777", inventory_dir_mode: "0777", root_script_mode: "0777"}
         rejected: [home_mode, download_dir_mode, download_file_mode, download_parent_mode, env_file_mode, inventory_pointer_mode,
-                   inventory_dir_mode]
+                   inventory_dir_mode, root_script_mode]
       - name: int 420 everywhere, int 504 (0770) inventory directory
         modes: {home_mode: 420, download_dir_mode: 420, download_file_mode: 420, download_parent_mode: 420, env_file_mode: 420,
-                inventory_pointer_mode: 420, inventory_dir_mode: 504}
-        normalised: {home_mode: "0644", download_file_mode: "0644", inventory_dir_mode: "0770"}
+                inventory_pointer_mode: 420, inventory_dir_mode: 504, root_script_mode: 493}
+        normalised: {home_mode: "0644", download_file_mode: "0644", inventory_dir_mode: "0770", root_script_mode: "0755"}
         rejected: []
       - {name: group-writable symbolic tree, modes: {extracted_mode: "u+rwX,g+rwX"}, normalised: {}, rejected: [extracted_mode]}
   tasks:

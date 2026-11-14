@@ -105,12 +105,36 @@
         msg: >-
           oracle_common_group_name (or GROUP_NAME) is required while oracle_common_manage_group_membership is true:
           the OS group db_owner and b_user join; got '{{ oracle_common_group_name | default('<undefined>') }}'
+      - failed: "{{ (oracle_common_root_script_method | string) not in ['wrapper', 'become'] }}"
+        msg: >-
+          oracle_common_root_script_method (alias oracle_root_script_method) must be wrapper (the site root wrapper)
+          or become (run root.sh directly through become); got '{{ oracle_common_root_script_method }}'
       - failed: >-
-          {{ not ((oracle_common_root_wrapper_path | default('') | string) is match(__oracle_common_re_abs_path)
-                  and (oracle_common_root_wrapper_path | default('') | string | length > 1)) }}
-        msg: "oracle_common_root_wrapper_path is required: absolute path of the wrapper that runs root.sh / rootpre.sh"
+          {{ (oracle_common_root_script_method | string) == 'wrapper'
+             and not ((oracle_common_root_wrapper_path | default('') | string) is match(__oracle_common_re_abs_path)
+                      and (oracle_common_root_wrapper_path | default('') | string | length > 1)) }}
+        msg: >-
+          oracle_common_root_wrapper_path is required while oracle_common_root_script_method is wrapper: absolute path of
+          the wrapper that runs root.sh / rootpre.sh (or set oracle_common_root_script_method=become)
       - failed: "{{ not ((oracle_common_root_wrapper_timeout | string) is match(__oracle_common_re_uint) and (oracle_common_root_wrapper_timeout | int) > 0) }}"
         msg: "oracle_common_root_wrapper_timeout must be a positive number of seconds"
+      - failed: >-
+          {{ (oracle_common_root_script_method | string) == 'become'
+             and not (oracle_common_root_script_become_user | default('') | string) is match(__oracle_common_re_posix_name) }}
+        msg: "oracle_common_root_script_become_user must be a POSIX user name; got '{{ oracle_common_root_script_become_user | default('<undefined>') }}'"
+      - failed: >-
+          {{ oracle_common_root_script_args is string or oracle_common_root_script_args is mapping
+             or oracle_common_root_script_args is not iterable }}
+        msg: "oracle_common_root_script_args must be a list of arguments (default [])"
+      - failed: >-
+          {{ (oracle_common_prereq_packages is string or oracle_common_prereq_packages is not iterable)
+             or (oracle_common_package_query_command is string or oracle_common_package_query_command is not iterable)
+             or ((oracle_common_package_query_command | length > 0)
+                 and not ((oracle_common_package_query_command | first | string) is match(__oracle_common_re_abs_path)
+                          and (oracle_common_package_query_regex | string | length > 0))) }}
+        msg: >-
+          oracle_common_prereq_packages must be a list, and oracle_common_package_query_command a list that is empty or
+          starts with an absolute path (with a non-empty oracle_common_package_query_regex)
       - failed: "{{ not (oracle_common_artifactory_url | default('') | string) is match(__oracle_common_re_url) }}"
         msg: >-
           oracle_common_artifactory_url is required: the http(s) URL of the repository folder that holds one

@@ -34,6 +34,9 @@
       extracted_mode: >-
         {{ ('%04o' | format(oracle_database_install_role_extracted_mode)) if oracle_database_install_role_extracted_mode is integer
            else (oracle_database_install_role_extracted_mode | string | trim) }}
+      root_script_mode: >-
+        {{ ('%04o' | format(oracle_database_install_role_root_script_mode)) if oracle_database_install_role_root_script_mode is integer
+           else (oracle_database_install_role_root_script_mode | string | trim) }}
 
 # Secure defaults that cannot be switched off by accident: no group/world-writable modes (0777 is
 # rejected, the inventory directory may be group-writable for the oinstall-style group), and a
@@ -52,6 +55,7 @@
       - {name: oracle_database_install_role_env_file_mode, value: "{{ oracle_database_install_role_modes.env_file_mode }}"}
       - {name: oracle_database_install_role_inventory_pointer_mode, value: "{{ oracle_database_install_role_modes.inventory_pointer_mode }}"}
       - {name: oracle_database_install_role_inventory_dir_mode, value: "{{ oracle_database_install_role_modes.inventory_dir_mode }}", group_write: true}
+      - {name: oracle_database_install_role_root_script_mode, value: "{{ oracle_database_install_role_modes.root_script_mode }}"}
     __oracle_database_install_role_xmode: "{{ oracle_database_install_role_modes.extracted_mode }}"
     __oracle_database_install_role_extracted_mode_ok: >-
       {{ (__oracle_database_install_role_xmode is match(__oracle_common_re_octal_mode)

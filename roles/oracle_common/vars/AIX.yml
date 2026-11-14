@@ -9,9 +9,26 @@ __oracle_common_group_add_command: [/usr/bin/chgrpmem, -m, +]
 # ("<group> users=a,b,c"). lsgroup also covers LDAP groups when the registry is configured.
 __oracle_common_group_members_command: [/usr/sbin/lsgroup, -a, users]
 __oracle_common_group_members_regex: 'users=(\S*)'
-# AIX runs <ORACLE_HOME>/clone/rootpre.sh through the root wrapper before the installer.
+# AIX runs <ORACLE_HOME>/clone/rootpre.sh as root (root wrapper or become) before the installer.
 __oracle_common_run_rootpre: true
+# Prerequisite filesets. package_facts has no AIX manager, so the installed filesets are listed with
+# `lslpp -Lc` (read-only); the regex captures the Fileset field of each "Package Name:Fileset:Level:..."
+# line. The list is the 19c requirement for AIX 7.2 / 7.3 (Oracle Database Installation Guide for IBM AIX
+# on POWER Systems, "Operating System Requirements"); check the guide for your release and override
+# oracle_common_prereq_packages if needed (an empty list skips the check).
 __oracle_common_package_manager: ""
-__oracle_common_prereq_packages: []
+__oracle_common_package_query_command: [/usr/bin/lslpp, -Lc]
+__oracle_common_package_query_regex: '(?m)^[^#:\s][^:]*:([^:]+):'
+__oracle_common_prereq_packages:
+  - bos.adt.base
+  - bos.adt.lib
+  - bos.adt.libm
+  - bos.perf.libperfstat
+  - bos.perf.perfstat
+  - bos.perf.proctools
+  - rsct.basic.rte
+  - rsct.compat.clients.rte
+  - xlC.aix61.rte
+  - xlC.rte
 # Central inventory pointer file (Oracle's oraInst.loc location on this platform).
 __oracle_common_inventory_pointer_file: /etc/oraInst.loc

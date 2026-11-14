@@ -1,0 +1,35 @@
+---
+# Red Hat family release 9 (RHEL 9, Oracle Linux 9 and rebuilds).
+# Prerequisite packages for Oracle Database 19c (19.19 or later) on release 9 (Oracle Database
+# Installation Guide for Linux, "Package requirements"). Check the guide for your exact release update
+# and override oracle_common_prereq_packages if needed.
+__oracle_common_prereq_packages:
+  - bc
+  - binutils
+  - compat-openssl11
+  - elfutils-libelf
+  - fontconfig
+  - glibc
+  - glibc-devel
+  - ksh
+  - libaio
+  - libasan
+  - libibverbs
+  - liblsan
+  - libnsl
+  - librdmacm
+  - libvirt-libs
+  - libX11
+  - libXau
+  - libXi
+  - libXrender
+  - libXtst
+  - libxcrypt-compat
+  - libgcc
+  - libstdc++
+  - libxcb
+  - make
+  - policycoreutils
+  - policycoreutils-python-utils
+  - smartmontools
+  - sysstat

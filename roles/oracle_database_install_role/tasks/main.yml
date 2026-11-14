@@ -72,24 +72,8 @@
         mode: "{{ oracle_database_install_role_modes.home_mode }}"
         state: directory
 
-    - name: Check whether pre-requisite packages are installed
-      block:
-        - set_fact:
-            missing_packages: []
-
-        - name: Gather the package facts
-          ansible.builtin.package_facts:
-            manager: "{{ oracle_common_package_manager }}"
-
-        - name: Check whether pre-requisite packages are installed
-          set_fact:
-            missing_packages: "{{ missing_packages + [ item ] }}"
-          when: 
-            - item not in ansible_facts.packages
-          with_items: "{{ oracle_common_prereq_packages }}"
-      # Per-OS package lists live in roles/oracle_common/vars/<os>.yml (RedHat.yml today).
-      when:
-        - oracle_common_prereq_packages | length > 0
+    # The prerequisite package check (per-OS list, fails on missing packages unless oracle_ignore_prereqs)
+    # runs read-only in tasks/preflight.yml (tasks/prereqs.yml), before anything changes on the host.
 
     # Reuses an existing oraInst.loc (side-by-side) or creates it on a clean target; never rewrites it.
     - name: Set up the central inventory
@@ -102,7 +86,7 @@
       ansible.builtin.include_tasks: rootpre.yml
       when:
         - oracle_common_run_rootpre | bool
-    
+
     # Argument vector, no shell: every value reaches the script as one literal argument.
     - name: Install Database Binaries for {{ db_owner }}
       ansible.builtin.command:
@@ -115,9 +99,18 @@
           - "{{ remote_output_directory }}"
           - "{{ database_version }}"
           - "{{ oracle_common_env_file }}"
-      # Effective central inventory (existing or newly created) for INVENTORY_LOCATION in the response file.
+      # Inputs of database_install.bash (documented at the top of the script). Empty values keep the
+      # script's defaults (primary group of db_owner, <ORACLE_HOME>/responseFile.rsp, no extra keys).
       environment:
+        # Effective central inventory (existing or newly created) for INVENTORY_LOCATION in the response file.
         ORACLE_INVENTORY_LOCATION: "{{ oracle_database_install_role_safety.inventory_location }}"
+        # -ignorePrereq only when oracle_ignore_prereqs is true (default false).
+        ORACLE_IGNORE_PREREQS: "{{ 'true' if (oracle_database_install_role_ignore_prereqs | bool) else 'false' }}"
+        ORACLE_INSTALL_EDITION: "{{ oracle_database_install_role_install_edition }}"
+        ORACLE_INSTALL_OPTION: "{{ oracle_database_install_role_install_option }}"
+        ORACLE_OS_GROUP: "{{ oracle_database_install_role_os_group }}"
+        ORACLE_RESPONSE_FILE: "{{ oracle_database_install_role_response_file }}"
+        ORACLE_RESPONSE_EXTRA_FILE: "{{ oracle_database_install_role_response_extra_file }}"
       async: 4000
       poll: 0
       register: shell_output
@@ -134,46 +127,13 @@
         var: job_result.stdout_lines
       failed_when: job_result.rc != 0
 
-    # The expect script is static: the wrapper path, ORACLE_HOME and timeout are passed through the
-    # environment and read with $env(...), so no value is ever parsed as Tcl or shell code.
-    - name: Run the root.sh script
-      become: true
-      become_user: "{{ b_user }}"
-      shell: |
-        set timeout $env(ORACLE_ROOT_WRAPPER_TIMEOUT)
-        spawn $env(ORACLE_ROOT_WRAPPER)
-
-        expect "*Enter your Selection*"
-        
-        send "1\r"
-
-        expect "*Enter your Selection*"
-
-        send "1\r"
-
-        expect "*Enter the PATH to root.sh*"
-
-        send "$env(ORACLE_ROOT_SCRIPT_DIR)\r"
-
-        expect "*Press ENTER to continue...*"
-
-        send "\r"
-
-        expect "*Enter your Selection*"
-
-        send "x\r"
-
-        exit 0
-      args:
-        executable: "{{ oracle_common_expect_path }}"
-      environment:
-        ORACLE_ROOT_WRAPPER: "{{ oracle_common_root_wrapper_path }}"
-        ORACLE_ROOT_WRAPPER_TIMEOUT: "{{ oracle_common_root_wrapper_timeout | int }}"
-        ORACLE_ROOT_SCRIPT_DIR: "{{ oracle_home }}"
-      register: root_output
-
-    - debug:
-        msg: "{{ root_output }}"
+    # root.sh through the site root wrapper (default) or directly through become; fails unless it succeeded.
+    - name: Run root.sh in {{ oracle_home }}
+      ansible.builtin.include_tasks: root_script.yml
+      vars:
+        __oracle_database_install_role_root_script_dir: "{{ oracle_home }}"
+        __oracle_database_install_role_root_script_name: root.sh
+        __oracle_database_install_role_root_script_success_regex: "{{ oracle_common_root_sh_success_regex }}"
 
     - name: Download and copy patches to server
       ansible.builtin.include_tasks: copy_files_to_server.yml

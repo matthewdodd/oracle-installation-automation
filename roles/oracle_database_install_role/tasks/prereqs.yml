@@ -1,0 +1,68 @@
+---
+# Prerequisite packages (finding M3). Read-only: nothing on the host is changed here.
+# The list is per OS (oracle_common_prereq_packages, from roles/oracle_common/vars/<os>.yml:
+# RedHat-7/8/9.yml for the Red Hat family including Oracle Linux, AIX.yml for AIX filesets).
+# Missing packages fail the run with their names, before anything changes on the host, unless
+# oracle_database_install_role_ignore_prereqs (alias oracle_ignore_prereqs) is true; that same flag
+# is the only way -ignorePrereq reaches the installer. An empty list skips the check with a message.
+# Called from tasks/preflight.yml.
+
+- name: Reset the list of missing prerequisite packages
+  ansible.builtin.set_fact:
+    oracle_database_install_role_missing_packages: []
+
+- name: Report that no prerequisite package list exists for this platform
+  when: oracle_common_prereq_packages | length == 0
+  ansible.builtin.debug:
+    msg: >-
+      No prerequisite package list for {{ ansible_facts.get('distribution', ansible_facts.get('system', 'this platform')) }}
+      {{ ansible_facts.get('distribution_major_version', '') }}: the package check is skipped (the installer's own
+      prerequisite checks still run unless oracle_ignore_prereqs is true). Add roles/oracle_common/vars/<os_family>-<major>.yml
+      or set oracle_common_prereq_packages to check it.
+
+- name: Check the prerequisite packages
+  when: oracle_common_prereq_packages | length > 0
+  block:
+    - name: Gather the package facts
+      when: oracle_common_package_query_command | length == 0
+      ansible.builtin.package_facts:
+        manager: "{{ oracle_common_package_manager }}"
+
+    - name: List the installed packages
+      when: oracle_common_package_query_command | length > 0
+      ansible.builtin.command:
+        argv: "{{ oracle_common_package_query_command }}"
+      register: oracle_database_install_role_package_query
+      changed_when: false
+      check_mode: false
+
+    - name: Work out the missing prerequisite packages
+      ansible.builtin.set_fact:
+        oracle_database_install_role_missing_packages: "{{ oracle_common_prereq_packages | reject('in', __installed) | list }}"
+      vars:
+        __installed: >-
+          {{ (oracle_database_install_role_package_query.stdout | regex_findall(oracle_common_package_query_regex) | map('trim') | list)
+             if oracle_common_package_query_command | length > 0
+             else (ansible_facts['packages'] | default({}) | list) }}
+
+    - name: Fail when prerequisite packages are missing
+      ansible.builtin.assert:
+        that: >-
+          oracle_database_install_role_missing_packages | length == 0
+          or (oracle_database_install_role_ignore_prereqs | bool)
+        fail_msg: >-
+          Missing prerequisite packages on {{ inventory_hostname }} ({{ oracle_database_install_role_missing_packages | length }}):
+          {{ oracle_database_install_role_missing_packages | join(', ') }}. Nothing was changed. Install them, or set
+          oracle_ignore_prereqs=true to continue knowingly (this also passes -ignorePrereq to the installer).
+        success_msg: >-
+          {{ 'All ' ~ (oracle_common_prereq_packages | length) ~ ' prerequisite packages are installed'
+             if oracle_database_install_role_missing_packages | length == 0
+             else 'Prerequisite check overridden by oracle_ignore_prereqs' }}
+
+- name: Warn that the prerequisite checks are switched off
+  when: oracle_database_install_role_ignore_prereqs | bool
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: oracle_ignore_prereqs is true: -ignorePrereq is passed to the installer
+      {{- (' and the missing prerequisite packages ' ~ (oracle_database_install_role_missing_packages | join(', ')) ~ ' are ignored')
+          if oracle_database_install_role_missing_packages | length > 0 else '' }}.
