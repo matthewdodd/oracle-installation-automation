@@ -1,6 +1,6 @@
 ---
 - name: Cleanup install files
-  become: yes
+  become: true
   become_user: "{{ b_user }}"
   ansible.builtin.file:
     path: "{{ install_folder_name }}"
@@ -10,12 +10,12 @@
   ansible.builtin.file:
     path: "{{ remote_script_directory }}"
     state: absent
-  ignore_errors: yes
+  ignore_errors: true
 
 - name: Remove {{ remote_script_directory }}
-  become: yes
+  become: true
   become_user: "{{ db_owner }}"
   ansible.builtin.file:
     path: "{{ remote_script_directory }}"
     state: absent
-  ignore_errors: yes
+  ignore_errors: true

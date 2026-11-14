@@ -42,3 +42,7 @@ jobs:
       - name: ansible-lint
         if: always()
         run: ansible-lint
+
+      - name: Permission-mode regression test (controller only)
+        if: always()
+        run: ansible-playbook -i localhost, tests/mode_validation.yml

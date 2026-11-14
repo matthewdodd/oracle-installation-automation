@@ -1,6 +1,24 @@
 ---
 # Validates every input before the play changes anything on a host. All problems are reported
 # together. Secret values (webhook URL, credentials, repository URL) are never echoed.
+
+# Permission modes are normalised to an octal string before they are validated, and the tasks apply
+# the normalised value (oracle_common_modes.<name>), so the checked mode and the applied mode are the
+# same. An unquoted YAML mode is an integer: `script_permission: 0777` parses as 511 and `750` as
+# decimal 750. '%04o' turns 511 back into "0777" (rejected) and 420 (0644) into "0644" (accepted);
+# decimal 750 becomes "1356", which is not a plain 3-digit mode and is rejected with a hint to quote it.
+- name: Normalise the permission modes
+  ansible.builtin.set_fact:
+    oracle_common_modes:
+      script_permission: >-
+        {{ ('%04o' | format(script_permission)) if script_permission is integer else (script_permission | string | trim) }}
+      oracle_common_staging_dir_mode: >-
+        {{ ('%04o' | format(oracle_common_staging_dir_mode)) if oracle_common_staging_dir_mode is integer
+           else (oracle_common_staging_dir_mode | string | trim) }}
+      oracle_common_staging_parent_mode: >-
+        {{ ('%04o' | format(oracle_common_staging_parent_mode)) if oracle_common_staging_parent_mode is integer
+           else (oracle_common_staging_parent_mode | string | trim) }}
+
 - name: Collect input validation errors
   ansible.builtin.set_fact:
     __oracle_common_preflight_errors: "{{ __oracle_common_checks | selectattr('failed') | map(attribute='msg') | list }}"
@@ -17,6 +35,11 @@
     __staging_ok: >-
       {{ (oracle_common_staging_base | string) is match(__oracle_common_re_abs_path)
          and ((oracle_common_staging_base | string) ~ '/') is not search(__oracle_common_re_dotdot) }}
+    # Names of the normalised modes that are not a plain octal mode, or grant group or world write.
+    __oracle_common_bad_modes: >-
+      {{ (oracle_common_modes | dict2items | rejectattr('value', 'match', __oracle_common_re_octal_mode) | map(attribute='key') | list)
+         + (oracle_common_modes | dict2items | selectattr('value', 'match', __oracle_common_re_mode_world_writable) | map(attribute='key') | list)
+         + (oracle_common_modes | dict2items | selectattr('value', 'match', __oracle_common_re_mode_group_writable) | map(attribute='key') | list) }}
     __oracle_common_checks:
       - failed: "{{ not (target is defined and (target | string | trim | length > 0)) }}"
         msg: "target is required: a comma-separated list of hosts, e.g. -e target=dbhost01.example.com"
@@ -46,6 +69,34 @@
                and (remote_output_directory | string) is match(__oracle_common_re_abs_path)
                and (oracle_common_env_file | string) is match(__oracle_common_re_abs_path)) }}
         msg: "remote_script_directory, remote_output_directory and oracle_common_env_file must be absolute paths without shell metacharacters"
+      - failed: "{{ 'script_permission' in __oracle_common_bad_modes }}"
+        msg: >-
+          script_permission must be an octal mode without group or world write access (e.g. "0750"; 0777 is not allowed;
+          quote the mode, an unquoted YAML number is read as an integer); got '{{ oracle_common_modes.script_permission }}'
+      - failed: "{{ 'oracle_common_staging_dir_mode' in __oracle_common_bad_modes }}"
+        msg: >-
+          oracle_common_staging_dir_mode must be an octal mode without group or world write access (e.g. "0750" or "0700";
+          quote the mode); got '{{ oracle_common_modes.oracle_common_staging_dir_mode }}'
+      - failed: "{{ 'oracle_common_staging_parent_mode' in __oracle_common_bad_modes }}"
+        msg: >-
+          oracle_common_staging_parent_mode must be an octal mode without group or world write access (e.g. "0755";
+          quote the mode); got '{{ oracle_common_modes.oracle_common_staging_parent_mode }}'
+      - failed: >-
+          {{ (oracle_common_manage_group_membership | bool)
+             and not (oracle_common_group_membership_become_user | default('') | string) is match(__oracle_common_re_posix_name) }}
+        msg: >-
+          oracle_common_group_membership_become_user must be a POSIX user name;
+          got '{{ oracle_common_group_membership_become_user | default('<undefined>') }}'
+      - failed: >-
+          {{ (oracle_common_manage_group_membership | bool)
+             and not (([oracle_common_group_add_command.split() | first | default('')] if oracle_common_group_add_command is string
+                       else oracle_common_group_add_command[:1])
+                      + ([oracle_common_group_members_command] if oracle_common_group_members_command is string
+                         else oracle_common_group_members_command[:1]))
+                     | select('match', __oracle_common_re_abs_path) | list | length == 2 }}
+        msg: >-
+          oracle_common_group_add_command and oracle_common_group_members_command must start with an absolute path
+          (e.g. [/bin/gpasswd, --add] and [/usr/bin/getent, group])
       - failed: "{{ not (b_user | default('') | string) is match(__oracle_common_re_posix_name) }}"
         msg: "b_user must be a POSIX user name; got '{{ b_user | default('<undefined>') }}'"
       - failed: >-
@@ -68,6 +119,11 @@
           {{ (oracle_common_artifactory_username | string | length > 0)
              != (oracle_common_artifactory_password | string | length > 0) }}
         msg: "oracle_common_artifactory_username and oracle_common_artifactory_password must be set together (values not shown)"
+      - failed: >-
+          {{ (oracle_common_artifactory_username | string | length > 0
+              or (oracle_common_artifactory_url | default('') | urlsplit('username') | default('', true) | length > 0))
+             and (oracle_common_artifactory_url | default('') | string | lower) is match('\Ahttp://') }}
+        msg: "Repository credentials are never sent over plain http: use an https oracle_common_artifactory_url (value not shown)"
       - failed: >-
           {{ (oracle_common_artifactory_ca_path | string | length > 0)
              and not (oracle_common_artifactory_ca_path | string) is match(__oracle_common_re_abs_path) }}
@@ -114,5 +170,11 @@
             if (oracle_common_patch_file_name | string | length == 0)
                and (patch_file_name | default(oracle_common_patch_file_name_fallback)) == oracle_common_patch_file_name_fallback
             else [])
+         + (['oracle_common_artifact_checksum_required is false: artifacts missing from oracle_common_artifact_checksums are not verified.']
+            if not (oracle_common_artifact_checksum_required | bool) else [])
+         + (['oracle_common_artifactory_validate_certs is false: downloads and credentials can be intercepted; use oracle_common_artifactory_ca_path.']
+            if not (oracle_common_artifactory_validate_certs | bool) else [])
+         + (['oracle_common_artifactory_url uses plain http: downloads rely on the checksums alone; prefer https.']
+            if (oracle_common_artifactory_url | string | lower) is match('\Ahttp://') else [])
          + (['oracle_common_artifactory_url contains credentials; move them to oracle_common_artifactory_username/password in Ansible Vault.']
             if (oracle_common_artifactory_url | urlsplit('username') | default('', true) | length > 0) else []) }}

@@ -1,32 +1,52 @@
 ---
+# Adds one member (loop item) to oracle_common_group_name, exactly as the original did (gpasswd on
+# Linux, chgrpmem on AIX), but:
+#   - membership is checked exactly: the per-OS lookup (getent group / lsgroup) is split on commas
+#     and compared member by member (the original grep matched substrings: oracle matched oracle2);
+#   - the change runs through `become` (oracle_common_group_membership_become_user, default root)
+#     instead of a raw `sudo` inside a shell, and every value is passed as a separate argument.
+# ansible.builtin.user is not used on purpose: for an account that lives in LDAP/IdM it could create
+# a conflicting local user. The OS gate and the per-OS commands come from roles/oracle_common.
 - name: Set the member and group to manage
   ansible.builtin.set_fact:
-    memberlist: "{{ item }}"
-    groupname: "{{ oracle_common_group_name }}"
+    initialization_role_member: "{{ item }}"
+    initialization_role_group: "{{ oracle_common_group_name }}"
 
-# The OS gate (Linux / AIX only) is enforced by roles/oracle_common/tasks/os_vars.yml, which
-# also supplies the per-OS shell and group command (vars/<os>.yml).
-- name: Add member to group
-  shell:
-  args:
-    executable: "{{ oracle_common_bash_path }}"
-    cmd: |
-      membername={{memberlist}}
-      grep {{groupname}}: /etc/group | grep $membername
-        
-      if [ $? -eq 0 ]
-      then
-        echo "Member $membername is already in the {{groupname}} group."
-      else
-        echo "add $membername" "{{groupname}}"
-        sudo {{ oracle_common_group_add_command }} "$membername" "{{groupname}}"
-      fi
-      if [ $? -ne 0 ]
-      then
-        echo "Error adding $membername to {{groupname}}"
-        exit 1
-      fi
-  register: action_result
+- name: Look up the members of the group {{ initialization_role_group }}
+  ansible.builtin.command:
+    argv: "{{ (__initialization_role_members_command | list) + [initialization_role_group] }}"
+  vars:
+    __initialization_role_members_command: >-
+      {{ [oracle_common_group_members_command] if oracle_common_group_members_command is string
+         else oracle_common_group_members_command }}
+  register: initialization_role_group_lookup
+  changed_when: false
+  check_mode: false
+  failed_when: initialization_role_group_lookup.rc != 0 or initialization_role_group_lookup.stdout | trim | length == 0
 
-- debug:
-    msg: "{{action_result.stdout_lines}}"
+- name: Parse the member list of the group {{ initialization_role_group }}
+  ansible.builtin.set_fact:
+    initialization_role_group_members: >-
+      {{ ((initialization_role_group_lookup.stdout | trim | regex_search(oracle_common_group_members_regex, '\1')) or [''])
+         | first | split(',') | map('trim') | reject('equalto', '') | list }}
+
+- name: Add the member to the group, if missing {{ initialization_role_member }}
+  when: initialization_role_member not in initialization_role_group_members
+  become: true
+  become_user: "{{ oracle_common_group_membership_become_user }}"
+  ansible.builtin.command:
+    argv: "{{ (__initialization_role_add_command | list) + [initialization_role_member, initialization_role_group] }}"
+  vars:
+    __initialization_role_add_command: >-
+      {{ oracle_common_group_add_command.split() if oracle_common_group_add_command is string
+         else oracle_common_group_add_command }}
+  register: initialization_role_group_add
+  changed_when: initialization_role_group_add.rc == 0
+
+- name: Report the group membership
+  ansible.builtin.debug:
+    msg: >-
+      {{ ('Member ' ~ initialization_role_member ~ ' is already in the ' ~ initialization_role_group ~ ' group.')
+         if initialization_role_member in initialization_role_group_members
+         else (('Added ' if initialization_role_group_add is changed else 'Would add (check mode) ')
+               ~ initialization_role_member ~ ' to ' ~ initialization_role_group ~ '.') }}

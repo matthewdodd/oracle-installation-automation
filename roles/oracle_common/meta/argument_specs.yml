@@ -10,13 +10,16 @@ argument_specs:
       - Validates the job inputs and the environment configuration, reporting every problem at once.
       - Must run (import_role) before initialization_role and oracle_database_install_role.
       - Derived paths, overridable but not listed as options because their defaults are templates of
-        the inputs below - remote_script_directory (<oracle_common_staging_base>/ora_ansible_scripts_<DATABASE_NAME>),
+        the inputs below - oracle_common_staging_base (<mountpoint>/<db_owner>/ansible_staging, owned by db_owner),
+        remote_script_directory (<oracle_common_staging_base>/ora_ansible_scripts_<DATABASE_NAME>),
         remote_output_directory (<oracle_common_staging_base>/oracle_database_install_<DATABASE_NAME>),
         oracle_common_env_dir (<oracle_common_site_prefix>), oracle_common_env_file (<oracle_common_env_dir>/<DATABASE_NAME>.env)
         and oracle_common_patch_file_name_fallback (<AIX|LINUX>_jan<YY>.tar.gz, YY from the target's clock; used only while
         oracle_common_patch_file_name is empty).
       - Per-OS values (oracle_common_artifact_platform, oracle_common_bash_path, oracle_common_expect_path,
-        oracle_common_group_add_command, oracle_common_run_rootpre, oracle_common_package_manager,
+        oracle_common_group_add_command (argument vector, e.g. [/bin/gpasswd, --add]),
+        oracle_common_group_members_command and oracle_common_group_members_regex (exact membership lookup,
+        e.g. [/usr/bin/getent, group]), oracle_common_run_rootpre, oracle_common_package_manager,
         oracle_common_prereq_packages, oracle_common_inventory_pointer_file (/etc/oraInst.loc on Linux and AIX))
         come from vars/<os>.yml and can be overridden per host or group; they are
         not listed as options because they are only known after the OS variables are loaded.
@@ -70,18 +73,32 @@ argument_specs:
         type: bool
         default: true
         description: Add db_owner and b_user to oracle_common_group_name.
+      oracle_common_group_membership_become_user:
+        type: str
+        default: root
+        description: Account (through become) that runs the group change command; the original used sudo, i.e. root.
       b_user:
         type: str
         default: root
         description: Privileged account used through become for root-level work.
       oracle_common_staging_base:
         type: str
-        default: /tmp
-        description: Base directory for the per-database staging directories.
+        description:
+          - Base directory for the per-database staging directories (default <mountpoint>/<db_owner>/ansible_staging,
+            created as db_owner when missing). Avoid world-writable locations such as /tmp; the staging directories are
+            verified to be owned by db_owner and not group/world-writable either way.
       script_permission:
         type: str
-        default: "0777"
-        description: Mode of the staged scripts and directories (tightened in resolution plan step 15).
+        default: "0750"
+        description: Mode of the staged scripts (owner db_owner). Group/world-writable modes such as 0777 are rejected.
+      oracle_common_staging_dir_mode:
+        type: str
+        default: "0750"
+        description: Mode of the staging base and staging directories (owner db_owner). Group/world-writable modes are rejected.
+      oracle_common_staging_parent_mode:
+        type: str
+        default: "0755"
+        description: Mode of the parent of the staging base (by default ORACLE_BASE) when it has to be created. Not world-writable.
       oracle_common_artifactory_version_map:
         type: dict
         description: Map of database_version to repository folder name; also the database_version allow-list.
@@ -110,6 +127,18 @@ argument_specs:
         type: str
         default: ""
         description: Optional PEM CA bundle on the target host used to verify the repository (exported as SSL_CERT_FILE).
+      oracle_common_artifact_checksums:
+        type: dict
+        default: {}
+        description:
+          - Expected checksum per artifact file name in get_url format <algorithm>:<digest>, keyed by file name
+            (for example LINUX_binaries.tar.gz mapped to sha256 and its hex digest).
+      oracle_common_artifact_checksum_required:
+        type: bool
+        default: true
+        description:
+          - Require a checksum for every downloaded artifact (binaries and patch bundle); the run stops before changing the
+            host when one is missing. Set false only knowingly (a warning is shown).
       oracle_common_patch_file_name:
         type: str
         default: ""

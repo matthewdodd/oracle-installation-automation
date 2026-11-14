@@ -1,0 +1,112 @@
+---
+# Regression test for the permission-mode guards (resolution plan steps 13-15, finding H3).
+# Runs on the controller only (connection local); it validates inputs and touches one file in a
+# private temporary directory, nothing else. Run from the repository root:
+#   ansible-playbook -i localhost, tests/mode_validation.yml
+#
+# An unquoted YAML mode is an integer: `script_permission: 0777` is 511 and 0644 is 420. Before the
+# fix the guards matched the decimal text ("511" passed, "420" was reported group-writable) and the
+# modules then applied 0777. Each case below checks the normalised value, which inputs are rejected,
+# and (for one accepted integer) the mode the file module really applies.
+- name: Permission-mode validation regression test
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  # Role defaults and patterns first, then the test inputs (a later vars file wins).
+  vars_files:
+    - ../roles/oracle_common/defaults/main.yml
+    - ../roles/oracle_common/vars/main.yml
+    - ../roles/oracle_common/vars/Linux.yml
+    - ../roles/oracle_database_install_role/defaults/main.yml
+    - vars/mode_validation.yml
+  vars:
+    mode_validation_common_cases:
+      - {name: string defaults, modes: {}, normalised: {script_permission: "0750"}, rejected: []}
+      - {name: int 511 (unquoted 0777), modes: {script_permission: 511}, normalised: {script_permission: "0777"}, rejected: [script_permission]}
+      - {name: int 420 (unquoted 0644), modes: {script_permission: 420}, normalised: {script_permission: "0644"}, rejected: []}
+      - {name: int 488 (unquoted 0750), modes: {script_permission: 488}, normalised: {script_permission: "0750"}, rejected: []}
+      - {name: unquoted decimal 750, modes: {script_permission: 750}, normalised: {script_permission: "1356"}, rejected: [script_permission]}
+      - {name: string 0777, modes: {script_permission: "0777"}, normalised: {script_permission: "0777"}, rejected: [script_permission]}
+      - name: int 511 staging directories
+        modes: {oracle_common_staging_dir_mode: 511, oracle_common_staging_parent_mode: 511}
+        normalised: {oracle_common_staging_dir_mode: "0777", oracle_common_staging_parent_mode: "0777"}
+        rejected: [oracle_common_staging_dir_mode, oracle_common_staging_parent_mode]
+      - name: int 420 / 448 staging directories
+        modes: {oracle_common_staging_dir_mode: 448, oracle_common_staging_parent_mode: 420}
+        normalised: {oracle_common_staging_dir_mode: "0700", oracle_common_staging_parent_mode: "0644"}
+        rejected: []
+    mode_validation_install_cases:
+      - {name: string defaults, modes: {}, normalised: {extracted_mode: "u+rwX,g+rX,g-w,o-rwx", home_mode: "0755"}, rejected: []}
+      - {name: int 511 extracted tree, modes: {extracted_mode: 511}, normalised: {extracted_mode: "0777"}, rejected: [extracted_mode]}
+      - {name: int 420 extracted tree, modes: {extracted_mode: 420}, normalised: {extracted_mode: "0644"}, rejected: []}
+      - name: int 511 everywhere
+        modes: {home_mode: 511, download_dir_mode: 511, download_file_mode: 511, download_parent_mode: 511, env_file_mode: 511,
+                inventory_pointer_mode: 511, inventory_dir_mode: 511}
+        normalised: {home_mode: "0777", inventory_dir_mode: "0777"}
+        rejected: [home_mode, download_dir_mode, download_file_mode, download_parent_mode, env_file_mode, inventory_pointer_mode,
+                   inventory_dir_mode]
+      - name: int 420 everywhere, int 504 (0770) inventory directory
+        modes: {home_mode: 420, download_dir_mode: 420, download_file_mode: 420, download_parent_mode: 420, env_file_mode: 420,
+                inventory_pointer_mode: 420, inventory_dir_mode: 504}
+        normalised: {home_mode: "0644", download_file_mode: "0644", inventory_dir_mode: "0770"}
+        rejected: []
+      - {name: group-writable symbolic tree, modes: {extracted_mode: "u+rwX,g+rwX"}, normalised: {}, rejected: [extracted_mode]}
+  tasks:
+    - name: Run the oracle_common cases
+      ansible.builtin.include_tasks: tasks/common_mode_case.yml
+      loop: "{{ mode_validation_common_cases }}"
+      loop_control:
+        loop_var: mode_validation_case
+        label: "{{ mode_validation_case.name }}"
+
+    - name: Run the oracle_database_install_role cases
+      ansible.builtin.include_tasks: tasks/install_mode_case.yml
+      loop: "{{ mode_validation_install_cases }}"
+      loop_control:
+        loop_var: mode_validation_case
+        label: "{{ mode_validation_case.name }}"
+
+    # The applied mode equals the validated one: int 420 must give 0644 on disk, not 0420 or 0777.
+    - name: Apply a normalised integer mode with the file module
+      block:
+        - name: Create a private temporary directory
+          ansible.builtin.tempfile:
+            state: directory
+            suffix: .mode_validation
+          register: mode_validation_tmp
+
+        - name: Use the unquoted mode 0644 (int 420)
+          ansible.builtin.set_fact:
+            script_permission: 420
+            oracle_common_staging_dir_mode: "0750"
+            oracle_common_staging_parent_mode: "0755"
+
+        - name: Normalise it as the roles do
+          ansible.builtin.include_role:
+            name: oracle_common
+            tasks_from: preflight
+
+        - name: Create a file with the normalised mode
+          ansible.builtin.file:
+            path: "{{ mode_validation_tmp.path }}/script"
+            state: touch
+            mode: "{{ oracle_common_modes.script_permission }}"
+            access_time: preserve
+            modification_time: preserve
+
+        - name: Read the applied mode
+          ansible.builtin.stat:
+            path: "{{ mode_validation_tmp.path }}/script"
+          register: mode_validation_stat
+
+        - name: Check the applied mode
+          ansible.builtin.assert:
+            that: mode_validation_stat.stat.mode == '0644'
+            fail_msg: "expected 0644 on disk, got {{ mode_validation_stat.stat.mode }}"
+            quiet: true
+      always:
+        - name: Remove the temporary directory
+          ansible.builtin.file:
+            path: "{{ mode_validation_tmp.path }}"
+            state: absent
+          when: mode_validation_tmp.path is defined

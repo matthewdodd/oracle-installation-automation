@@ -18,16 +18,17 @@
       ansible.builtin.copy:
         src: "{{ role_path }}/files/"
         dest: "{{ remote_script_directory }}/oracle_database_install_role"
-        mode: "{{ script_permission }}"
+        mode: "{{ oracle_common_modes.script_permission }}"
+        directory_mode: "{{ oracle_common_modes.oracle_common_staging_dir_mode }}"
 
 - name: Oracle Database Installation
-  become: yes
+  become: true
   become_user: "{{ db_owner }}"
   block:
     - name: Create the Oracle Home location
-      file:
+      ansible.builtin.file:
         path: "{{ oracle_home }}"
-        mode: "{{ script_permission }}"
+        mode: "{{ oracle_database_install_role_modes.home_mode }}"
         state: directory
 
     # Recorded before any extraction so the install rescue (tasks/rollback.yml) removes only a home this
@@ -50,11 +51,12 @@
       copy:
         src: "{{ install_folder_name }}/{{ install_file_name }}"
         dest: "{{ oracle_home }}"
-        remote_src: yes
+        remote_src: true
+        mode: "{{ oracle_database_install_role_modes.download_file_mode }}"
 
     - name: Extract {{ install_file_name }} into {{ oracle_home }}
       ansible.builtin.unarchive:
-        remote_src: yes
+        remote_src: true
         src: "{{ oracle_home }}/{{ install_file_name }}"
         dest: "{{ oracle_home }}"
 
@@ -65,9 +67,9 @@
       ignore_errors: true
 
     - name: Correct Permissions on the Oracle Home location
-      file:
+      ansible.builtin.file:
         path: "{{ oracle_home }}"
-        mode: '0755'
+        mode: "{{ oracle_database_install_role_modes.home_mode }}"
         state: directory
 
     - name: Check whether pre-requisite packages are installed
@@ -101,9 +103,18 @@
       when:
         - oracle_common_run_rootpre | bool
     
+    # Argument vector, no shell: every value reaches the script as one literal argument.
     - name: Install Database Binaries for {{ db_owner }}
-      shell: |
-        {{ remote_script_directory }}/oracle_database_install_role/database_install.bash {{ DATABASE_NAME }} {{ db_owner }} {{ remote_script_directory }} {{ remote_output_directory }} {{ database_version }} {{ oracle_common_env_file }}
+      ansible.builtin.command:
+        argv:
+          - "{{ oracle_common_bash_path }}"
+          - "{{ remote_script_directory }}/oracle_database_install_role/database_install.bash"
+          - "{{ DATABASE_NAME }}"
+          - "{{ db_owner }}"
+          - "{{ remote_script_directory }}"
+          - "{{ remote_output_directory }}"
+          - "{{ database_version }}"
+          - "{{ oracle_common_env_file }}"
       # Effective central inventory (existing or newly created) for INVENTORY_LOCATION in the response file.
       environment:
         ORACLE_INVENTORY_LOCATION: "{{ oracle_database_install_role_safety.inventory_location }}"
@@ -123,12 +134,14 @@
         var: job_result.stdout_lines
       failed_when: job_result.rc != 0
 
+    # The expect script is static: the wrapper path, ORACLE_HOME and timeout are passed through the
+    # environment and read with $env(...), so no value is ever parsed as Tcl or shell code.
     - name: Run the root.sh script
-      become: yes
+      become: true
       become_user: "{{ b_user }}"
       shell: |
-        set timeout {{ oracle_common_root_wrapper_timeout | int }}
-        spawn {{ oracle_common_root_wrapper_path }}
+        set timeout $env(ORACLE_ROOT_WRAPPER_TIMEOUT)
+        spawn $env(ORACLE_ROOT_WRAPPER)
 
         expect "*Enter your Selection*"
         
@@ -140,7 +153,7 @@
 
         expect "*Enter the PATH to root.sh*"
 
-        send "{{ oracle_home }}\r"
+        send "$env(ORACLE_ROOT_SCRIPT_DIR)\r"
 
         expect "*Press ENTER to continue...*"
 
@@ -153,6 +166,10 @@
         exit 0
       args:
         executable: "{{ oracle_common_expect_path }}"
+      environment:
+        ORACLE_ROOT_WRAPPER: "{{ oracle_common_root_wrapper_path }}"
+        ORACLE_ROOT_WRAPPER_TIMEOUT: "{{ oracle_common_root_wrapper_timeout | int }}"
+        ORACLE_ROOT_SCRIPT_DIR: "{{ oracle_home }}"
       register: root_output
 
     - debug:
@@ -166,8 +183,16 @@
         patch: "yes"
 
     - name: Patch Database Binaries for {{ db_owner }}
-      shell: |
-        {{ remote_script_directory }}/oracle_database_install_role/database_patch.bash {{ DATABASE_NAME }} {{ db_owner }} {{ remote_script_directory }} {{ remote_output_directory }} {{ install_folder_name }} {{ oracle_common_env_file }}
+      ansible.builtin.command:
+        argv:
+          - "{{ oracle_common_bash_path }}"
+          - "{{ remote_script_directory }}/oracle_database_install_role/database_patch.bash"
+          - "{{ DATABASE_NAME }}"
+          - "{{ db_owner }}"
+          - "{{ remote_script_directory }}"
+          - "{{ remote_output_directory }}"
+          - "{{ install_folder_name }}"
+          - "{{ oracle_common_env_file }}"
       async: 4000
       poll: 0
       register: shell_output

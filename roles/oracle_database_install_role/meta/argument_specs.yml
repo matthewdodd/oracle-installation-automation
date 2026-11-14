@@ -88,6 +88,32 @@ argument_specs:
       oracle_database_install_role_env_file_mode:
         type: str
         description: Mode of the environment file (default 0755).
+      oracle_database_install_role_env_path_include_cwd:
+        type: bool
+        description: End PATH in the environment file with "." as the original did (default false, a security risk).
+      oracle_database_install_role_home_mode:
+        type: str
+        description: Mode of the ORACLE_HOME directory at creation and after extraction (default 0755).
+      oracle_database_install_role_download_dir_mode:
+        type: str
+        description: Mode of install_folder_name, owned by db_owner and its primary group (default 0750).
+      oracle_database_install_role_download_parent_mode:
+        type: str
+        description: Mode of the shared parent of install_folder_name when this run creates it (default 0755).
+      oracle_database_install_role_download_file_mode:
+        type: str
+        description: Mode of the downloaded artifacts and the copied binaries archive (default 0640).
+      oracle_database_install_role_extracted_mode:
+        type: str
+        description:
+          - Mode applied recursively to the extracted patch tree (default u+rwX,g+rX,g-w,o-rwx, keeps executable bits).
+            Modes that give group or others write access are rejected.
+      oracle_common_artifact_checksums:
+        type: dict
+        description: Expected checksum per artifact file name (from oracle_common).
+      oracle_common_artifact_checksum_required:
+        type: bool
+        description: Require a checksum for every artifact (default true, from oracle_common).
       oracle_database_install_role_rollback_on_failure:
         type: bool
         description:

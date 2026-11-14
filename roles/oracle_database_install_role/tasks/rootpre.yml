@@ -1,6 +1,6 @@
 ---
 - name: Initialize the rootpre.sh script
-  become: yes
+  become: true
   become_user: "{{ db_owner }}"
   block:
     - set_fact:
@@ -10,15 +10,16 @@
       copy:
         src: "{{ root_pre_folder }}/rootpre.sh"
         dest: "{{ root_pre_folder }}/root.sh"
-        remote_src: yes
+        remote_src: true
         mode: '0755'
    
+# Static expect script: values come from the environment ($env(...)), never from Jinja in the script.
 - name: Run the rootpre.sh script
-  become: yes
+  become: true
   become_user: "{{ b_user }}"
   shell: |
-    set timeout {{ oracle_common_root_wrapper_timeout | int }}
-    spawn {{ oracle_common_root_wrapper_path }}
+    set timeout $env(ORACLE_ROOT_WRAPPER_TIMEOUT)
+    spawn $env(ORACLE_ROOT_WRAPPER)
 
     expect "*Enter your Selection*"
     
@@ -30,7 +31,7 @@
 
     expect "*Enter the PATH to root.sh*"
 
-    send "{{ root_pre_folder }}\r"
+    send "$env(ROOTPRE_DIR)\r"
 
     expect "*Press ENTER to continue...*"
 
@@ -45,6 +46,8 @@
     executable: "{{ oracle_common_expect_path }}"
   environment:
     ROOTPRE_DIR: "{{ root_pre_folder }}"
+    ORACLE_ROOT_WRAPPER: "{{ oracle_common_root_wrapper_path }}"
+    ORACLE_ROOT_WRAPPER_TIMEOUT: "{{ oracle_common_root_wrapper_timeout | int }}"
   register: rootpre_output
 
 - debug:

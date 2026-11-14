@@ -54,9 +54,9 @@ if [[ -z "$1" ]]; then
 elif [[ -z "$2" ]]; then
   usage_error "second argument must be Database Owner ID"
 elif [[ -z "$3" ]]; then
-  usage_error "remote_script_directory parameter required, i.e. /tmp/ora_ansible_scripts_<DATABASE_NAME>"
+  usage_error "remote_script_directory parameter required, i.e. <oracle_common_staging_base>/ora_ansible_scripts_<DATABASE_NAME>"
 elif [[ -z "$4" ]]; then
-  usage_error "remote_output_directory parameter required, i.e. /tmp/oracle_database_install_<DATABASE_NAME>"
+  usage_error "remote_output_directory parameter required, i.e. <oracle_common_staging_base>/oracle_database_install_<DATABASE_NAME>"
 elif [[ -z "$5" ]]; then
   usage_error "install_folder_name parameter required, i.e. <site prefix>/software/<database_version>"
 elif [[ -z "$6" ]]; then

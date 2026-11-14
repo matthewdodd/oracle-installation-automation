@@ -35,15 +35,28 @@ oracle_common_manage_group_membership: true
 # Required while membership is managed; no generic default exists. GROUP_NAME (the original
 # variable name, e.g. from existing AAP job templates or inventories) is accepted as an alias.
 oracle_common_group_name: "{{ GROUP_NAME | default('') }}"
+# Account the group change runs as, through `become` (the original ran `sudo gpasswd` / `sudo chgrpmem`,
+# i.e. as root, from inside a shell). Membership is checked exactly (per-OS lookup command, member list
+# split on commas) and the per-OS add command (gpasswd / chgrpmem) is run with an argument vector.
+oracle_common_group_membership_become_user: root
 
 # --- Staging ------------------------------------------------------------------------------
-# Generic base for the per-database staging directories.
-oracle_common_staging_base: /tmp
+# Base for the per-database staging directories (scripts and installer logs). The default is a
+# directory owned by db_owner inside its ORACLE_BASE, not a predictable path in a world-writable
+# directory such as /tmp (symlink / pre-creation attacks). It is created as db_owner when missing.
+# Any override must be a directory db_owner can create entries in; the staging directories are
+# created as db_owner (never through a symlink) and then verified to be owned by db_owner and not
+# group/world-writable, so a pre-created or foreign directory stops the run.
+oracle_common_staging_base: "{{ mountpoint }}/{{ db_owner }}/ansible_staging"
 remote_script_directory: "{{ oracle_common_staging_base }}/ora_ansible_scripts_{{ DATABASE_NAME }}"
 remote_output_directory: "{{ oracle_common_staging_base }}/oracle_database_install_{{ DATABASE_NAME }}"
-# Mode applied to staged scripts and directories.
-# TODO(resolution plan step 15): tighten; 0777 is a privilege-escalation risk.
-script_permission: "0777"
+# Mode of the staged scripts (owner db_owner). Group/world-writable modes are rejected (0777 is
+# no longer possible).
+script_permission: "0750"
+# Mode of the staging base and the staging directories (owner db_owner); no group/world write.
+oracle_common_staging_dir_mode: "0750"
+# Mode of the parent of the staging base (by default ORACLE_BASE) when this run has to create it.
+oracle_common_staging_parent_mode: "0755"
 
 # --- Site layout --------------------------------------------------------------------------
 # oracle_common_site_prefix is required (see above). Derived paths, each overridable:
@@ -75,6 +88,19 @@ oracle_common_artifactory_use_proxy: false
 # original behaviour but exposes the credentials to interception; prefer the CA bundle.
 oracle_common_artifactory_validate_certs: true
 oracle_common_artifactory_ca_path: ""
+# Integrity of the downloads: expected checksum per artifact file name, in get_url's format
+# <algorithm>:<hex digest> (sha256 recommended), e.g.
+#   oracle_common_artifact_checksums:
+#     LINUX_binaries.tar.gz: "sha256:<64 hex characters>"
+#     LINUX_jan26.tar.gz: "sha256:<64 hex characters>"
+# Take the digests from a trusted source (the repository's checksum view or your release record).
+# get_url also accepts <algorithm>:<URL of a checksum file>, which only protects against transfer
+# errors, not against a tampered repository.
+oracle_common_artifact_checksums: {}
+# Secure default: every downloaded artifact (binaries and patch bundle) must have a checksum in
+# oracle_common_artifact_checksums, otherwise the run stops before changing the host. Set false
+# only knowingly (the original playbook verified nothing); a warning is shown for each unverified file.
+oracle_common_artifact_checksum_required: true
 
 # --- Patch selection ----------------------------------------------------------------------
 # File name of the patch bundle in the repository, e.g. LINUX_jan26.tar.gz. Pin it explicitly.
@@ -128,7 +154,12 @@ oracle_common_supported_systems:
 oracle_common_artifact_platform: "{{ __oracle_common_artifact_platform }}"
 oracle_common_bash_path: "{{ __oracle_common_bash_path }}"
 oracle_common_expect_path: "{{ __oracle_common_expect_path }}"
+# Group change command (string or list); called as: <command> <member> <group>.
 oracle_common_group_add_command: "{{ __oracle_common_group_add_command }}"
+# Exact group membership lookup: command (list) called as <command> <group>, and a regex whose first
+# group captures the comma-separated member list from its output.
+oracle_common_group_members_command: "{{ __oracle_common_group_members_command }}"
+oracle_common_group_members_regex: "{{ __oracle_common_group_members_regex }}"
 oracle_common_run_rootpre: "{{ __oracle_common_run_rootpre }}"
 oracle_common_package_manager: "{{ __oracle_common_package_manager }}"
 oracle_common_prereq_packages: "{{ __oracle_common_prereq_packages }}"

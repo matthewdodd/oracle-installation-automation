@@ -15,7 +15,7 @@
     state: directory
     owner: "{{ db_owner }}"
     group: "{{ oracle_database_install_role_safety.inventory_group }}"
-    mode: "{{ oracle_database_install_role_inventory_dir_mode }}"
+    mode: "{{ oracle_database_install_role_modes.inventory_dir_mode }}"
   register: oracle_database_install_role_inventory_dir_result
 
 - name: Record whether this run created the central inventory directory
@@ -36,7 +36,7 @@
       inventory_loc={{ oracle_database_install_role_safety.inventory_location }}
     force: false
     group: "{{ oracle_database_install_role_safety.inventory_group }}"
-    mode: "{{ oracle_database_install_role_inventory_pointer_mode }}"
+    mode: "{{ oracle_database_install_role_modes.inventory_pointer_mode }}"
   register: oracle_database_install_role_pointer_result
 
 - name: Record whether this run created the central inventory pointer

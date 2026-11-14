@@ -8,7 +8,7 @@
         state: absent
   rescue:
     - name: Remove {{ remote_script_directory }} if exists - {{ db_owner }}
-      become: yes
+      become: true
       become_user: "{{ db_owner }}"
       ansible.builtin.file:
         path: "{{ remote_script_directory }}"
@@ -22,7 +22,7 @@
         state: absent
   rescue:
     - name: Remove {{ remote_output_directory }} if exists - {{ db_owner }}
-      become: yes
+      become: true
       become_user: "{{ db_owner }}"
       ansible.builtin.file:
         path: "{{ remote_output_directory }}"

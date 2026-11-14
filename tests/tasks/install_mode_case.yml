@@ -1,0 +1,47 @@
+---
+# One oracle_database_install_role case: run the real security-input validation with the case's
+# modes, then compare the normalised modes and the rejected inputs with the expectation.
+- name: Run the install role security validation ({{ mode_validation_case.name }})
+  block:
+    - name: Validate the inputs
+      ansible.builtin.include_role:
+        name: oracle_database_install_role
+        tasks_from: validate_security_inputs
+      vars:
+        oracle_database_install_role_home_mode: "{{ mode_validation_case.modes.home_mode | default('0755') }}"
+        oracle_database_install_role_download_dir_mode: "{{ mode_validation_case.modes.download_dir_mode | default('0750') }}"
+        oracle_database_install_role_download_file_mode: "{{ mode_validation_case.modes.download_file_mode | default('0640') }}"
+        oracle_database_install_role_download_parent_mode: "{{ mode_validation_case.modes.download_parent_mode | default('0755') }}"
+        oracle_database_install_role_env_file_mode: "{{ mode_validation_case.modes.env_file_mode | default('0755') }}"
+        oracle_database_install_role_inventory_pointer_mode: "{{ mode_validation_case.modes.inventory_pointer_mode | default('0644') }}"
+        oracle_database_install_role_inventory_dir_mode: "{{ mode_validation_case.modes.inventory_dir_mode | default('0770') }}"
+        oracle_database_install_role_extracted_mode: "{{ mode_validation_case.modes.extracted_mode | default('u+rwX,g+rX,g-w,o-rwx') }}"
+  rescue:
+    - name: Keep the validation errors
+      ansible.builtin.set_fact:
+        mode_validation_install_errors: "{{ ansible_failed_result.msg | default('') }}"
+
+- name: Check the outcome ({{ mode_validation_case.name }})
+  ansible.builtin.assert:
+    that:
+      - __mode_validation_actual == (mode_validation_case.rejected | sort)
+      - (oracle_database_install_role_modes | dict2items | selectattr('key', 'in', mode_validation_case.normalised) | items2dict)
+        == mode_validation_case.normalised
+    fail_msg: >-
+      rejected {{ __mode_validation_actual }} (expected {{ mode_validation_case.rejected | sort }});
+      normalised {{ oracle_database_install_role_modes }} (expected {{ mode_validation_case.normalised }})
+    quiet: true
+  vars:
+    __mode_validation_errors: >-
+      {{ mode_validation_install_errors | default('')
+         | regex_replace('\AInvalid security inputs: ', '') | split(' | ') }}
+    __mode_validation_actual: >-
+      {{ ['home_mode', 'download_dir_mode', 'download_file_mode', 'download_parent_mode', 'env_file_mode',
+          'inventory_pointer_mode', 'inventory_dir_mode', 'extracted_mode']
+         | select('in', __mode_validation_errors | map('regex_search', '\A\S+') | map('default', '', true)
+                        | map('regex_replace', '\Aoracle_database_install_role_', '') | list)
+         | sort }}
+
+- name: Forget the errors of this case
+  ansible.builtin.set_fact:
+    mode_validation_install_errors: ""

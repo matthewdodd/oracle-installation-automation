@@ -49,6 +49,10 @@
          + (['oracle_home must not be inside install_folder_name, which cleanup removes']
             if ((oracle_home | string) ~ '/').startswith((install_folder_name | string) ~ '/') else []) }}
 
+# Permission modes (normalised, no group/world write) and artifact checksums.
+- name: Validate the permission and download integrity inputs
+  ansible.builtin.import_tasks: validate_security_inputs.yml
+
 - name: Reset the record of what this run created
   ansible.builtin.set_fact:
     oracle_database_install_role_created:
@@ -159,6 +163,8 @@
            if oracle_database_install_role_pointer_stat.stat.exists
            else (oracle_database_install_role_inventory_group | default('', true) or oracle_database_install_role_owner_primary_group.stdout | trim) }}
       owner_groups: "{{ oracle_database_install_role_owner_groups.stdout.split() }}"
+      # Group of the staged software (install_folder_name) together with owner db_owner.
+      owner_group: "{{ oracle_database_install_role_owner_primary_group.stdout | trim }}"
   vars:
     __oracle_database_install_role_pointer_text: >-
       {{ (oracle_database_install_role_pointer_content.content | default('') | b64decode) if oracle_database_install_role_pointer_stat.stat.exists else '' }}

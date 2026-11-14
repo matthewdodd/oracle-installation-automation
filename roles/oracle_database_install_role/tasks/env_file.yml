@@ -9,7 +9,7 @@
   ansible.builtin.template:
     src: db_install.env.j2
     dest: "{{ oracle_common_env_file }}"
-    mode: "{{ oracle_database_install_role_env_file_mode }}"
+    mode: "{{ oracle_database_install_role_modes.env_file_mode }}"
 
 - name: Record that this run created the environment file
   when: not (oracle_database_install_role_safety.env_file_exists | bool)

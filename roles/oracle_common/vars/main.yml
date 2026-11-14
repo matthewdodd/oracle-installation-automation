@@ -17,3 +17,15 @@ __oracle_common_re_https_url: '\Ahttps://[^\s]+\Z'
 __oracle_common_re_file_name: '\A[A-Za-z0-9._+-]+\Z'
 # Positive integer (seconds).
 __oracle_common_re_uint: '\A[0-9]+\Z'
+# File mode in octal (3 digits, optional leading 0). Applied to the normalised string only (tasks/preflight.yml
+# turns an integer such as 511, i.e. an unquoted 0777, into "0777" first).
+__oracle_common_re_octal_mode: '\A0?[0-7]{3}\Z'
+# Octal mode with the world (others) write bit, or the group write bit.
+__oracle_common_re_mode_world_writable: '\A0?[0-7]{2}[2367]\Z'
+__oracle_common_re_mode_group_writable: '\A0?[0-7][2367][0-7]\Z'
+# Symbolic mode (comma-separated clauses such as u+rwX,g+rX,o-rwx), and a clause that grants write to
+# group, others or everybody (who contains g, o or a, or is empty, with + or =).
+__oracle_common_re_symbolic_mode: '\A[ugoa]*[-+=][rwxXst]*(,[ugoa]*[-+=][rwxXst]*)*\Z'
+__oracle_common_re_symbolic_mode_unsafe: '\A(?:[ugoa]*[goa][ugoa]*|)[+=][rwxXst]*w'
+# get_url checksum: <algorithm>:<hex digest or URL of a checksum file>.
+__oracle_common_re_checksum: '\A(md5|sha1|sha224|sha256|sha384|sha512):[^\s]+\Z'

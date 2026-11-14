@@ -1,0 +1,37 @@
+---
+# One oracle_common case: run the real preflight with the case's modes (integers stay integers: 511 normalising to "0777"
+# rather than "511" shows the integer path ran),
+# then compare the normalised modes and the rejected inputs with the expectation.
+- name: Run the oracle_common preflight ({{ mode_validation_case.name }})
+  block:
+    # Set as facts (not role parameters): script_permission is the original, unprefixed input name.
+    - name: Set the modes of this case
+      ansible.builtin.set_fact:
+        script_permission: "{{ mode_validation_case.modes.script_permission | default('0750') }}"
+        oracle_common_staging_dir_mode: "{{ mode_validation_case.modes.oracle_common_staging_dir_mode | default('0750') }}"
+        oracle_common_staging_parent_mode: "{{ mode_validation_case.modes.oracle_common_staging_parent_mode | default('0755') }}"
+
+    - name: Validate the inputs
+      ansible.builtin.include_role:
+        name: oracle_common
+        tasks_from: preflight
+  rescue:
+    - name: Note the expected validation failure
+      ansible.builtin.debug:
+        msg: "preflight rejected the inputs (checked below)"
+
+- name: Check the outcome ({{ mode_validation_case.name }})
+  ansible.builtin.assert:
+    that:
+      - __mode_validation_actual == (mode_validation_case.rejected | sort)
+      - (oracle_common_modes | dict2items | selectattr('key', 'in', mode_validation_case.normalised) | items2dict) == mode_validation_case.normalised
+    fail_msg: >-
+      rejected {{ __mode_validation_actual }} (expected {{ mode_validation_case.rejected | sort }});
+      normalised {{ oracle_common_modes }} (expected {{ mode_validation_case.normalised }})
+    quiet: true
+  vars:
+    __mode_validation_names: [script_permission, oracle_common_staging_dir_mode, oracle_common_staging_parent_mode]
+    __mode_validation_actual: >-
+      {{ __mode_validation_names
+         | select('in', __oracle_common_preflight_errors | map('regex_search', '\A\S+') | list)
+         | sort }}

@@ -6,6 +6,19 @@
 # --- Connection ---------------------------------------------------------------------------
 ansible_user: ansible_svc
 # ansible_python_interpreter: /usr/bin/python3
+# SSH host keys are verified (ansible.cfg host_key_checking = True). Keep the targets' keys in the
+# controller's known_hosts, or point at a managed file:
+# ansible_ssh_common_args: "-o UserKnownHostsFile=/etc/ansible/known_hosts.example"
+#
+# Becoming db_owner (an unprivileged user) needs one of (see ansible.cfg):
+#   RHEL/Linux: the 'acl' package (setfacl) on the targets - nothing to set here;
+#   AIX or no setfacl: a group shared by the connection user and db_owner, e.g. the group below:
+# ansible_common_remote_group: "{{ oracle_common_group_name }}"
+#   or connect as root (become_user: db_owner on the tasks stays in effect); never set
+#   ansible_become_user, it overrides every task's become_user:
+# ansible_user: root
+# Last resort only, knowingly and for the affected hosts only (module files become world-readable):
+# ansible_shell_allow_world_readable_temp: true
 
 # --- Required environment inputs ----------------------------------------------------------
 oracle_common_artifactory_url: https://artifactory.example.com/artifactory/release/oracledatabase
@@ -28,6 +41,25 @@ oracle_common_group_name: oracle_automation
 # PEM bundle on the target host that signs the repository certificate (internal CA).
 # oracle_common_artifactory_ca_path: /etc/pki/ca-trust/source/anchors/example-ca.pem
 # oracle_common_artifactory_use_proxy: false
+# Disable certificate verification only knowingly (prefer the CA bundle above):
+# oracle_common_artifactory_validate_certs: true
+
+# --- Download integrity (required by default) ----------------------------------------------
+# One entry per artifact that is downloaded: the binaries (<AIX|LINUX>_binaries.tar.gz) and the
+# patch bundle. Digests from a trusted source (repository checksum view / release record).
+oracle_common_artifact_checksums:
+  LINUX_binaries.tar.gz: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  LINUX_jan26.tar.gz: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+# oracle_common_artifact_checksum_required: true
+
+# --- Staging and permissions ----------------------------------------------------------------
+# Scripts and installer logs are staged in a db_owner-owned directory, by default
+# <mountpoint>/<db_owner>/ansible_staging (not /tmp). Modes that are group/world-writable are rejected.
+# oracle_common_staging_base: /u01/oracle/ansible_staging
+# script_permission: "0750"
+# oracle_common_staging_dir_mode: "0750"
+# Group membership changes run through become as this user (the original used sudo):
+# oracle_common_group_membership_become_user: root
 
 # --- Clean target / side-by-side install (roles/oracle_database_install_role/defaults/main.yml) ---
 # An existing non-empty ORACLE_HOME or a different <DB>.env is refused unless forced. Prefer a
@@ -39,6 +71,8 @@ oracle_common_group_name: oracle_automation
 # clean target it is created for <mountpoint>/<db_owner>/oraInventory unless set here.
 # oracle_database_install_role_new_inventory_location: /u01/app/oraInventory
 # oracle_database_install_role_inventory_group: oinstall
+# The original environment file ended PATH with "." (current directory); kept out by default.
+# oracle_database_install_role_env_path_include_cwd: false
 # Keep what a failed run created, for troubleshooting (default: remove it).
 # oracle_database_install_role_rollback_on_failure: true
 

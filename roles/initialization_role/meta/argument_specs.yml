@@ -4,8 +4,10 @@ argument_specs:
   main:
     short_description: Prepare a host for an Oracle install (staging directories, OS group membership).
     description:
-      - Removes and recreates the per-database staging directories as db_owner.
-      - Adds db_owner and b_user to oracle_common_group_name (alias GROUP_NAME) when oracle_common_manage_group_membership is true.
+      - Removes and recreates the per-database staging directories as db_owner (never through a symlink) and verifies they
+        are owned by db_owner and not group/world-writable.
+      - Adds db_owner and b_user to oracle_common_group_name (alias GROUP_NAME) when oracle_common_manage_group_membership is
+        true. Membership is checked exactly (getent group / lsgroup); the change runs through become, not inline sudo.
     options:
       DATABASE_NAME:
         type: str
@@ -27,6 +29,15 @@ argument_specs:
       oracle_common_manage_group_membership:
         type: bool
         description: Manage membership of oracle_common_group_name (default true, from oracle_common).
+      oracle_common_group_membership_become_user:
+        type: str
+        description: Account that runs the group change through become (default root, from oracle_common).
+      oracle_common_staging_base:
+        type: str
+        description: Base of the staging directories (default <mountpoint>/<db_owner>/ansible_staging, from oracle_common).
+      oracle_common_staging_dir_mode:
+        type: str
+        description: Mode of the staging directories (default 0750, from oracle_common).
       script_permission:
         type: str
-        description: Mode of the staging directories (from oracle_common).
+        description: Mode of the staged scripts (default 0750, from oracle_common).

@@ -3,8 +3,12 @@
 __oracle_common_artifact_platform: AIX
 __oracle_common_bash_path: /usr/bin/bash
 __oracle_common_expect_path: /usr/bin/expect
-# Command that adds a member to a group; called as: <command> <member> <group>
-__oracle_common_group_add_command: /usr/bin/chgrpmem -m +
+# Command (argument vector) that adds a member to a group; called as: <command...> <member> <group>
+__oracle_common_group_add_command: [/usr/bin/chgrpmem, -m, +]
+# Exact membership lookup: <command...> <group>; the regex captures the comma-separated members
+# ("<group> users=a,b,c"). lsgroup also covers LDAP groups when the registry is configured.
+__oracle_common_group_members_command: [/usr/sbin/lsgroup, -a, users]
+__oracle_common_group_members_regex: 'users=(\S*)'
 # AIX runs <ORACLE_HOME>/clone/rootpre.sh through the root wrapper before the installer.
 __oracle_common_run_rootpre: true
 __oracle_common_package_manager: ""

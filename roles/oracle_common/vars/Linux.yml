@@ -4,8 +4,12 @@
 __oracle_common_artifact_platform: LINUX
 __oracle_common_bash_path: /usr/bin/bash
 __oracle_common_expect_path: /usr/bin/expect
-# Command that adds a member to a group; called as: <command> <member> <group>
-__oracle_common_group_add_command: /bin/gpasswd --add
+# Command (argument vector) that adds a member to a group; called as: <command...> <member> <group>
+__oracle_common_group_add_command: [/bin/gpasswd, --add]
+# Exact membership lookup through NSS (local files, LDAP, SSSD): <command...> <group>; the regex
+# captures the comma-separated member field of "name:x:gid:a,b,c".
+__oracle_common_group_members_command: [/usr/bin/getent, group]
+__oracle_common_group_members_regex: '\A[^:]*:[^:]*:[^:]*:(.*)\Z'
 __oracle_common_run_rootpre: false
 # No package check unless a more specific file defines one (the original checked RHEL only).
 __oracle_common_package_manager: ""
