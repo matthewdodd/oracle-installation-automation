@@ -1,0 +1,34 @@
+---
+# Role metadata. Inputs are documented and validated in meta/argument_specs.yml.
+galaxy_info:
+  role_name: initialization_role
+  author: Oracle installation automation maintainers
+  description: >-
+    Prepares a host for an Oracle Database install: recreates the private per-database staging
+    directories as db_owner and, optionally, adds db_owner and the privileged user to an OS group.
+  # No licence has been chosen yet (owner decision; there is no LICENSE file). NOASSERTION is the
+  # SPDX value for "not stated". Replace it when the repository licence is decided.
+  license: NOASSERTION
+  # Same floor as the pinned controller toolchain in requirements.txt (ansible-core 2.22.0).
+  min_ansible_version: "2.22"
+  # Platforms with a vars file in roles/oracle_common/vars/ (selected from facts at run time).
+  # EL covers RHEL and its rebuilds (Oracle Linux, Rocky, AlmaLinux: os_family RedHat), which share
+  # RedHat-<major>.yml. AIX 7.3 uses the same AIX.yml as 7.2; the Galaxy schema does not list 7.3 yet.
+  platforms:
+    - name: EL
+      versions:
+        - "7"
+        - "8"
+        - "9"
+    - name: AIX
+      versions:
+        - "7.2"
+  galaxy_tags:
+    - oracle
+    - database
+    - aix
+    - rhel
+
+# oracle_common must run first (the playbook imports it). It is not a meta dependency, so it runs
+# once per play and is not repeated by every role that needs it.
+dependencies: []

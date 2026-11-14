@@ -1,0 +1,35 @@
+---
+# Role metadata. Inputs are documented and validated in meta/argument_specs.yml.
+galaxy_info:
+  role_name: oracle_common
+  author: Oracle installation automation maintainers
+  description: >-
+    Shared configuration for the Oracle Database roles: loads per-OS variables
+    (vars/<system|os_family|distribution|major>.yml), validates every input before the host is
+    changed, and provides the Teams Workflows notification, failure reporting and staging-removal
+    task files.
+  # No licence has been chosen yet (owner decision; there is no LICENSE file). NOASSERTION is the
+  # SPDX value for "not stated". Replace it when the repository licence is decided.
+  license: NOASSERTION
+  # Same floor as the pinned controller toolchain in requirements.txt (ansible-core 2.22.0).
+  min_ansible_version: "2.22"
+  # Platforms with a vars file in roles/oracle_common/vars/ (selected from facts at run time).
+  # EL covers RHEL and its rebuilds (Oracle Linux, Rocky, AlmaLinux: os_family RedHat), which share
+  # RedHat-<major>.yml. AIX 7.3 uses the same AIX.yml as 7.2; the Galaxy schema does not list 7.3 yet.
+  platforms:
+    - name: EL
+      versions:
+        - "7"
+        - "8"
+        - "9"
+    - name: AIX
+      versions:
+        - "7.2"
+  galaxy_tags:
+    - oracle
+    - database
+    - aix
+    - rhel
+
+# No role dependencies: the playbook imports oracle_common explicitly, once, before the other roles.
+dependencies: []
