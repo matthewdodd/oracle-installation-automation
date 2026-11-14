@@ -31,6 +31,31 @@ jobs:
         if: always()
         run: yamllint .
 
+      - name: Committed vault files are encrypted
+        if: always()
+        # Fails on any tracked vault.yml / vault.yaml, or any file under group_vars/ or host_vars/ named
+        # (or inside a directory named) vault*, that lacks the "$ANSIBLE_VAULT;" header. *.example is exempt.
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=0
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              *.example) continue ;;
+            esac
+            case "/$path" in
+              */vault.yml | */vault.yaml | */group_vars/vault* | */host_vars/vault* | */group_vars/*/vault* | */host_vars/*/vault*) ;;
+              *) continue ;;
+            esac
+            first_line=""
+            IFS= read -r first_line < "$path" || true
+            if [[ "$first_line" != "\$ANSIBLE_VAULT;"* ]]; then
+              echo "::error file=${path}::${path} is not encrypted with ansible-vault (no \$ANSIBLE_VAULT; header)"
+              status=1
+            fi
+          done < <(git ls-files -z)
+          exit "$status"
+
       - name: shellcheck
         if: always()
         run: shellcheck roles/*/files/*.bash

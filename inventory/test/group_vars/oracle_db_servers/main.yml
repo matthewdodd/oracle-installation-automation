@@ -1,0 +1,112 @@
+---
+# test environment configuration for the database servers (skeleton).
+# Every value marked <CHANGE_ME> is a placeholder that the input validation rejects
+# (roles/oracle_common/tasks/preflight.yml, roles/oracle_database_install_role/tasks/validate_security_inputs.yml),
+# so nothing runs until it is replaced. Variable reference: roles/oracle_common/meta/argument_specs.yml
+# (defaults in roles/oracle_common/defaults/main.yml). Layout and vault steps: inventory/README.md.
+
+# --- Connection ---------------------------------------------------------------------------
+# Account Ansible connects as (default: the user running ansible-playbook / the AAP machine credential).
+# ansible_user: ansible_svc
+# ansible_python_interpreter: /usr/bin/python3
+# SSH host keys are verified (ansible.cfg host_key_checking = True). Keep the targets' keys in the
+# controller's known_hosts, or point at a managed file:
+# ansible_ssh_common_args: "-o UserKnownHostsFile=/etc/ansible/known_hosts.test"
+#
+# Becoming db_owner (an unprivileged user) needs one of (see ansible.cfg):
+#   RHEL/Linux: the 'acl' package (setfacl) on the targets - nothing to set here;
+#   AIX or no setfacl: a group shared by the connection user and db_owner, e.g. the group below:
+# ansible_common_remote_group: "{{ oracle_common_group_name }}"
+#   or connect as root (become_user: db_owner on the tasks stays in effect); never set
+#   ansible_become_user, it overrides every task's become_user:
+# ansible_user: root
+# Last resort only, knowingly and for the affected hosts only (module files become world-readable):
+# ansible_shell_allow_world_readable_temp: true
+
+# --- Required environment inputs ----------------------------------------------------------
+# https URL of the repository folder holding one sub-folder per Oracle release, e.g. https://artifactory.<site>/artifactory/release/oracledatabase
+oracle_common_artifactory_url: "<CHANGE_ME>"
+# Absolute site directory for <DB>.env files and software staging, e.g. /local
+oracle_common_site_prefix: "<CHANGE_ME>"
+# Absolute path of the site root wrapper that runs root.sh / rootpre.sh, e.g. /usr/local/bin/root-wrapper
+oracle_common_root_wrapper_path: "<CHANGE_ME>"
+# Hosts without the wrapper (e.g. cloud): instead delete the line above and run root.sh directly through become as root:
+# oracle_common_root_script_method: become
+# OS group (POSIX name) that db_owner and b_user join, e.g. oracle_automation (GROUP_NAME is also accepted)
+oracle_common_group_name: "<CHANGE_ME>"
+# Where group membership is managed elsewhere (LDAP/IdM): set this false instead; the group above is then not needed.
+# oracle_common_manage_group_membership: true
+
+# --- Optional -----------------------------------------------------------------------------
+# Privileged account used through become (default: root). oracle_common_privileged_user is the
+# role-prefixed name; the original name b_user keeps working.
+# b_user: oracle_admin
+# Pin the patch bundle (otherwise <AIX|LINUX>_jan<YY>.tar.gz for the current year is used).
+# oracle_common_patch_file_name: LINUX_jan26.tar.gz
+# oracle_common_https_proxy: http://proxy.example.invalid:8080
+# oracle_common_job_url_base: https://aap.example.invalid/#/jobs/playbook/
+# oracle_common_notification_delegate_to: localhost
+# oracle_common_notification_ca_path: /etc/pki/tls/certs/ca-bundle.crt
+# PEM bundle on the target host that signs the repository certificate (internal CA).
+# oracle_common_artifactory_ca_path: /etc/pki/ca-trust/source/anchors/site-ca.pem
+# oracle_common_artifactory_use_proxy: false
+# Disable certificate verification only knowingly (prefer the CA bundle above):
+# oracle_common_artifactory_validate_certs: true
+
+# --- Download integrity (required by default) ----------------------------------------------
+# One entry per artifact that is downloaded: the binaries and the patch bundle. Replace each value with
+# "sha256:<64 hex digest>" from a trusted source (repository checksum view / release record).
+# AIX hosts download AIX_binaries.tar.gz / AIX_jan<YY>.tar.gz instead: use those names as keys.
+oracle_common_artifact_checksums:
+  # Digest of the binaries archive, "sha256:<64 hex characters>"
+  LINUX_binaries.tar.gz: "<CHANGE_ME>"
+  # Digest of the patch bundle (the name must match oracle_common_patch_file_name or the date-derived default)
+  LINUX_jan26.tar.gz: "<CHANGE_ME>"
+# oracle_common_artifact_checksum_required: true
+
+# --- Staging and permissions ----------------------------------------------------------------
+# Scripts and installer logs are staged in a db_owner-owned directory, by default
+# <mountpoint>/<db_owner>/ansible_staging (not /tmp). Modes that are group/world-writable are rejected.
+# oracle_common_staging_base: /u01/oracle/ansible_staging
+# script_permission: "0750"            # alias of oracle_common_script_permission
+# oracle_common_staging_dir_mode: "0750"
+# Group membership changes run through become as this user (the original used sudo):
+# oracle_common_group_membership_become_user: root
+
+# --- Clean target / side-by-side install (roles/oracle_database_install_role/defaults/main.yml) ---
+# An existing non-empty ORACLE_HOME or a different <DB>.env is refused unless forced. Prefer a
+# per-job extra var (-e oracle_force_reinstall=true) over setting this for a whole group.
+# oracle_database_install_role_force_reinstall: false
+# Side-by-side install of a release that is already installed: give the new home its own path.
+# oracle_home: /u01/oracle/product/19.0.0.0_2   # alias of oracle_database_install_role_oracle_home
+# Central inventory: an existing /etc/oraInst.loc is always reused and never rewritten. On a
+# clean target it is created for <mountpoint>/<db_owner>/oraInventory unless set here.
+# oracle_database_install_role_new_inventory_location: /u01/app/oraInventory
+# oracle_database_install_role_inventory_group: oinstall
+# The original environment file ended PATH with "." (current directory); kept out by default.
+# oracle_database_install_role_env_path_include_cwd: false
+# Keep what a failed run created, for troubleshooting (default: remove it).
+# oracle_database_install_role_rollback_on_failure: true
+# Hard limits for the installer and the patch run, and the status poll interval (seconds; original values).
+# oracle_database_install_role_install_timeout: 4000
+# oracle_database_install_role_patch_timeout: 4000
+# oracle_database_install_role_poll_interval: 30
+
+# --- Installer (roles/oracle_database_install_role/defaults/main.yml) -----------------------
+# Missing prerequisite packages (per-OS list, roles/oracle_common/vars/) fail the run. Setting this
+# continues knowingly and passes -ignorePrereq to the installer; prefer a per-job extra var.
+# oracle_ignore_prereqs: false
+# oracle_database_install_role_install_edition: EE
+# oracle_database_install_role_os_group: dba
+
+# --- Secrets (Ansible Vault, vault id "test") ---------------------------------------------
+# Secrets live in an encrypted vault.yml next to this file (see vault.yml.example and inventory/README.md).
+# These mappings are already wired: once vault.yml exists and is decrypted with --vault-id test@prompt
+# (or the AAP Vault credential), its vault_* values take effect. Without vault.yml they fall back to the
+# role defaults (no Teams notification, no repository credentials), so the playbook still runs.
+# In AAP, a custom credential type can inject the same vault_* names instead of a vault file.
+# Teams Workflows webhook URL (https; a bearer secret). notification_webhook_url stays accepted as an alias.
+oracle_common_notification_webhook_url: "{{ vault_oracle_notification_webhook_url | default(notification_webhook_url | default('')) }}"
+# Repository credentials (set both or neither).
+oracle_common_artifactory_username: "{{ vault_oracle_artifactory_username | default('') }}"
+oracle_common_artifactory_password: "{{ vault_oracle_artifactory_password | default('') }}"

@@ -1,0 +1,22 @@
+---
+# EXAMPLE ONLY for the prod environment - fake values, not encrypted, not loaded by Ansible (the
+# .example extension is ignored). The vault_* names are already mapped in main.yml. To use it:
+#
+#   cp inventory/prod/group_vars/oracle_db_servers/vault.yml.example inventory/prod/group_vars/oracle_db_servers/vault.yml
+#   $EDITOR inventory/prod/group_vars/oracle_db_servers/vault.yml        # real values
+#   ansible-vault encrypt --vault-id prod@prompt inventory/prod/group_vars/oracle_db_servers/vault.yml
+#   head -n 1 inventory/prod/group_vars/oracle_db_servers/vault.yml      # must start with $ANSIBLE_VAULT;1.2;AES256;prod
+#   ansible-vault edit --vault-id prod@prompt inventory/prod/group_vars/oracle_db_servers/vault.yml   # later changes
+#   ansible-playbook -i inventory/prod/hosts.yml --vault-id prod@prompt oracle_database_install.yml -e target=...
+#
+# Never commit an unencrypted vault.yml (CI rejects any committed vault file without the
+# $ANSIBLE_VAULT; header) or a vault password file (.gitignore excludes .vault_pass* / vault_pass*).
+# Use a prod-only vault password, different from every other environment. Rotate with
+#   ansible-vault rekey --vault-id prod@prompt --new-vault-id prod@prompt inventory/prod/group_vars/oracle_db_servers/vault.yml
+# AAP: create a Vault credential with Vault Identifier "prod" and the prod vault password, and attach it
+# to the prod job template (no --vault-id option is needed there).
+# PRODUCTION: limit who can read the prod vault password and the AAP credential; rotate it whenever
+# someone who knew it leaves.
+vault_oracle_notification_webhook_url: https://example.invalid/workflows/FAKE-PROD-WEBHOOK-ID
+vault_oracle_artifactory_username: example-prod-user
+vault_oracle_artifactory_password: example-not-a-real-password
