@@ -82,9 +82,10 @@ exists, generic first and most specific last: `<system>.yml`, `<os_family>.yml`,
 add one file.** Kernels other than Linux and AIX are refused (`oracle_common_supported_systems`).
 
 **EL7 is not supported.** RHEL 7, Oracle Linux 7, CentOS 7 and other Red Hat family releases before 8,
-including Amazon Linux 2 (`os_family` RedHat, release 2), are refused before anything runs on the host
+including Amazon Linux 2 (`os_family` RedHat, release 2), are refused before anything changes on the host
 (`Failed: <distribution> <release> is not supported`, for example `RedHat 7` or `Amazon 2`). ansible-core
-2.22 needs Python 3.9 or later on the targets, and these releases have no vendor Python 3.9+. Upgrade those
+2.22 needs Python 3.9 or later on the targets, and these releases have no vendor Python 3.9+, so on a stock
+EL7 host without Python 3.9+ the run may already fail at fact gathering with a Python error. Upgrade those
 hosts to release 8 or 9 (Amazon Linux 2023 for Amazon Linux 2), or keep using an earlier version of this
 automation for them.
 
