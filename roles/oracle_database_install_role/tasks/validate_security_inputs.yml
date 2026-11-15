@@ -73,7 +73,8 @@
     # Checksum errors name the artifact (the key) only, never the value.
     __oracle_database_install_role_bad_checksum_msg: >-
       oracle_common_artifact_checksums[\1] must be <algorithm>:<hex digest> with the digest length of the algorithm
-      (md5 32, sha1 40, sha224 56, sha256 64, sha384 96, sha512 128 hex digits), or <algorithm>:<http(s) URL of a checksum file>
+      (md5 32, sha1 40, sha224 56, sha256 64, sha384 96, sha512 128 hex digits), or <algorithm>:<http(s) URL of a checksum file>,
+      where <algorithm> is one of md5, sha1, sha224, sha256, sha384, sha512 in lowercase
     __oracle_database_install_role_zero_checksum_msg: >-
       oracle_common_artifact_checksums[\1] is an all-zero placeholder digest: replace it with the real digest of the artifact
       from a trusted source

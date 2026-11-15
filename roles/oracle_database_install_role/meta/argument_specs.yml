@@ -202,7 +202,8 @@ argument_specs:
         type: dict
         description:
           - Expected checksum per artifact file name (from oracle_common), <algorithm>:<hex digest of exactly the
-            algorithm's length, not all zeros> or <algorithm>:<http(s) URL of a checksum file>.
+            algorithm's length, not all zeros> or <algorithm>:<http(s) URL of a checksum file>, where <algorithm> is
+            one of md5, sha1, sha224, sha256, sha384 or sha512 (lowercase) in both forms.
       oracle_common_artifact_checksum_required:
         type: bool
         description: Require a checksum for every artifact (default true, from oracle_common).

@@ -98,7 +98,8 @@ oracle_common_artifactory_use_proxy: false
 oracle_common_artifactory_validate_certs: true
 oracle_common_artifactory_ca_path: ""
 # Integrity of the downloads: expected checksum per artifact file name, in get_url's format
-# <algorithm>:<hex digest> (sha256 recommended). The digest is hex (either case) of exactly the
+# <algorithm>:<hex digest> (sha256 recommended). <algorithm> is one of md5, sha1, sha224, sha256,
+# sha384 or sha512, in lowercase (the same list applies to the URL form below). The digest is hex (either case) of exactly the
 # algorithm's length (md5 32, sha1 40, sha224 56, sha256 64, sha384 96, sha512 128); an all-zero
 # placeholder digest is rejected. E.g.
 #   oracle_common_artifact_checksums:

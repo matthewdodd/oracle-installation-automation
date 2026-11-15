@@ -149,6 +149,7 @@ argument_specs:
           - Each value is <algorithm>:<hex digest> where the digest is hex (either case) of exactly the algorithm's length
             (md5 32, sha1 40, sha224 56, sha256 64, sha384 96, sha512 128) and not all zeros, or
             <algorithm>:<http(s) URL of a checksum file>. Other values are rejected before the host is changed.
+          - In both forms <algorithm> must be one of md5, sha1, sha224, sha256, sha384 or sha512, written in lowercase.
       oracle_common_artifact_checksum_required:
         type: bool
         default: true

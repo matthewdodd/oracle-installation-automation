@@ -56,6 +56,7 @@ oracle_common_group_name: "<CHANGE_ME>"
 # --- Download integrity (required by default) ----------------------------------------------
 # One entry per artifact that is downloaded: the binaries and the patch bundle. Replace each value with
 # "sha256:<64 hex digest>" from a trusted source (repository checksum view / release record).
+# Allowed algorithms (lowercase): md5, sha1, sha224, sha256, sha384, sha512.
 # AIX hosts download AIX_binaries.tar.gz / AIX_jan<YY>.tar.gz instead: use those names as keys.
 oracle_common_artifact_checksums:
   # Digest of the binaries archive, "sha256:<64 hex characters>"

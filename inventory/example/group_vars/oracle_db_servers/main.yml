@@ -50,8 +50,8 @@ oracle_common_group_name: oracle_automation
 
 # --- Download integrity (required by default) ----------------------------------------------
 # One entry per artifact that is downloaded: the binaries (<AIX|LINUX>_binaries.tar.gz) and the
-# patch bundle. Replace each <CHANGE_ME> with "sha256:<64 hex digest>" (or another get_url algorithm with
-# its exact digest length, or "sha256:https://<URL of a checksum file>") from a trusted source (repository
+# patch bundle. Replace each <CHANGE_ME> with "sha256:<64 hex digest>" (or md5, sha1, sha224, sha384 or
+# sha512, lowercase, with its exact digest length, or "sha256:https://<URL of a checksum file>") from a trusted source (repository
 # checksum view / release record). The validation rejects <CHANGE_ME> and all-zero digests.
 oracle_common_artifact_checksums:
   # Digest of the binaries archive, "sha256:<64 hex characters>"
