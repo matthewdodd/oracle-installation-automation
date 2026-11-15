@@ -3,6 +3,7 @@
 # The prerequisite package list depends on the release, so it lives in RedHat-<major>.yml (RedHat-8.yml,
 # RedHat-9.yml), which os_vars.yml loads for every distribution of the family. A release
 # without such a file keeps the empty list below: the package check is skipped with a message.
-# Releases older than __oracle_common_redhat_min_major_version (vars/main.yml), i.e. EL7, are refused by os_vars.yml.
+# Releases older than __oracle_common_redhat_min_major_version (vars/main.yml), such as EL7 or Amazon Linux 2,
+# are refused by the guard in tasks/os_vars.yml.
 __oracle_common_package_manager: rpm
 __oracle_common_prereq_packages: []
