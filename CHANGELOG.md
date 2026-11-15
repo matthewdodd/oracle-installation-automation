@@ -15,6 +15,8 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
 
 - **ansible-core 2.22 is required** on the controller (Python 3.13 or later). The original playbook used
   `include:`, which current ansible-core no longer accepts. Target hosts need Python 3.9 or later.
+- **EL7 is no longer supported.** RHEL 7, Oracle Linux 7 and other Red Hat family releases before 8 are
+  refused before anything changes on the host, because they have no vendor Python 3.9+. See Removed.
 - **New required environment inputs.** They used to be placeholders hard-coded in the code, and now
   have no default:
   - `oracle_common_artifactory_url` (was a placeholder repository URL in the code).
@@ -61,11 +63,11 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
 - `roles/oracle_common`, a shared role:
   - per-OS variable loading (`vars/<system>.yml`, `<os_family>.yml`, `<distribution>.yml`,
     `<os_family>-<major>.yml`, `<distribution>-<major>.yml`), so adding a distribution or release
-    means adding one file. It ships `Linux.yml`, `AIX.yml`, `RedHat.yml`, and `RedHat-7/8/9.yml`;
+    means adding one file. It ships `Linux.yml`, `AIX.yml`, `RedHat.yml`, and `RedHat-8/9.yml`;
   - validation of every input before the host is changed, reporting all problems at once;
   - the Teams notification, failure recording and reporting, and best-effort staging removal.
 - `meta/argument_specs.yml` for every role (all inputs, types, defaults, aliases) and `meta/main.yml`
-  (platforms EL 7/8/9 and AIX, `min_ansible_version` 2.22).
+  (platforms EL 8/9 and AIX, `min_ansible_version` 2.22).
 - `oracle_database_install_role_env_tns_admin`, `_env_path_dirs`, `_env_nls_lang`,
   `_env_nls_timestamp_format` and `_env_nls_date_format`: the site conventions in `<DB>.env`, validated
   for safe characters. The defaults are the original values, so the file content is unchanged.
@@ -93,7 +95,7 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
 
   Both have configurable success and failure patterns, timeout, wrapper exit check, default-answer regex,
   arguments and stdin.
-- Enforced prerequisite checks per OS (RHEL/OL 7, 8, 9 package lists; AIX filesets through `lslpp -Lc`)
+- Enforced prerequisite checks per OS (RHEL/OL 8, 9 package lists; AIX filesets through `lslpp -Lc`)
   in `tasks/prereqs.yml`. The flag is `oracle_database_install_role_ignore_prereqs` (alias
   `oracle_ignore_prereqs`).
 - Installer settings: `oracle_database_install_role_install_edition`, `_install_option`, `_os_group`,
@@ -173,6 +175,11 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
 - The duplicate script copy, and the unused `ORACLE_SID`/`server_name`/`action` facts.
 - Every `ignore_errors`.
 - All `0777` modes. This has no toggle.
+- **EL7 support (breaking change).** RHEL 7, Oracle Linux 7 and other Red Hat family releases before 8
+  are no longer supported, and `roles/oracle_common/vars/RedHat-7.yml` is gone. ansible-core 2.22 needs
+  Python 3.9 or later on the targets and EL7 has no vendor Python 3.9+. Such hosts are now refused early
+  by `roles/oracle_common/tasks/os_vars.yml` with a clear message (without the check they would have run
+  with an empty prerequisite list and skipped the package check); `tests/mode_validation.yml` covers it.
 
 ### Fixed
 

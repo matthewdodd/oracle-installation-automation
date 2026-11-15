@@ -14,10 +14,10 @@ galaxy_info:
   # Platforms with a vars file in roles/oracle_common/vars/ (selected from facts at run time).
   # EL covers RHEL and its rebuilds (Oracle Linux, Rocky, AlmaLinux: os_family RedHat), which share
   # RedHat-<major>.yml. AIX 7.3 uses the same AIX.yml as 7.2; the Galaxy schema does not list 7.3 yet.
+  # EL7 is not supported: roles/oracle_common/tasks/os_vars.yml refuses Red Hat family releases before 8.
   platforms:
     - name: EL
       versions:
-        - "7"
         - "8"
         - "9"
     - name: AIX

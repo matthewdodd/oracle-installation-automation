@@ -1,0 +1,39 @@
+---
+# One platform case: run the real oracle_common tasks/os_vars.yml with simulated facts (task vars override the
+# gathered ansible_facts), then compare the outcome (refused or accepted) and, when accepted, the prerequisite
+# list it loaded with the one in the expected release file (prereq_file).
+- name: Run the oracle_common OS checks ({{ platform_case.name }})
+  block:
+    - name: Reset the outcome of the previous case
+      ansible.builtin.set_fact:
+        __platform_case_refused: false
+        __platform_case_message: ""
+
+    - name: Load the OS variables
+      ansible.builtin.include_role:
+        name: oracle_common
+        tasks_from: os_vars
+      vars:
+        ansible_facts: "{{ platform_case.facts }}"
+  rescue:
+    - name: Note the refusal
+      ansible.builtin.set_fact:
+        __platform_case_refused: true
+        __platform_case_message: "{{ ansible_failed_result.msg | default('') }}"
+
+- name: Check the outcome ({{ platform_case.name }})
+  ansible.builtin.assert:
+    that:
+      - __platform_case_refused == platform_case.refused
+      - not platform_case.refused or (platform_case.message in __platform_case_message)
+      - platform_case.refused or (__oracle_common_prereq_packages | length > 0)
+      - platform_case.refused or (__oracle_common_prereq_packages == __platform_case_expected_packages)
+    fail_msg: >-
+      refused {{ __platform_case_refused }} (expected {{ platform_case.refused }}); message
+      "{{ __platform_case_message }}"; prerequisite packages loaded {{ __oracle_common_prereq_packages | default([]) | length }}
+    quiet: true
+  vars:
+    __platform_case_expected_packages: >-
+      {{ [] if platform_case.refused else
+         (lookup('ansible.builtin.file', playbook_dir ~ '/../roles/oracle_common/vars/' ~ platform_case.prereq_file)
+          | from_yaml)['__oracle_common_prereq_packages'] }}

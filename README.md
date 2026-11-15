@@ -69,8 +69,9 @@ Contents
 
 | Platform | Selected by | Notes |
 |---|---|---|
-| RHEL 7, 8, 9 | `vars/Linux.yml` + `RedHat.yml` + `RedHat-<major>.yml` | Package list per release. |
-| Oracle Linux, Rocky, AlmaLinux 7/8/9 | same files (`os_family` RedHat) | Use the RHEL release file. |
+| RHEL 8, 9 | `vars/Linux.yml` + `RedHat.yml` + `RedHat-<major>.yml` | Package list per release. |
+| Oracle Linux, Rocky, AlmaLinux 8/9 | same files (`os_family` RedHat) | Use the RHEL release file. |
+| RHEL 7, Oracle Linux 7 and other EL7 rebuilds | refused by `tasks/os_vars.yml` | **Not supported** (see below). |
 | IBM AIX 7.2 / 7.3 | `vars/AIX.yml` | `lslpp` fileset check, `chgrpmem`, `rootpre.sh`. |
 | Other Linux | `vars/Linux.yml` only | Runs, but the package check is skipped until a vars file is added. |
 
@@ -79,13 +80,16 @@ exists, generic first and most specific last: `<system>.yml`, `<os_family>.yml`,
 `<os_family>-<major>.yml`, then `<distribution>-<major>.yml`. **To support a new distribution or release,
 add one file.** Kernels other than Linux and AIX are refused (`oracle_common_supported_systems`).
 
+**EL7 is not supported.** RHEL 7, Oracle Linux 7, CentOS 7 and other Red Hat family releases before 8
+are refused before anything runs on the host (`Failed: <distribution> 7 is not supported`). ansible-core
+2.22 needs Python 3.9 or later on the targets, and EL7 has no vendor Python 3.9+. Upgrade those hosts to
+release 8 or 9, or keep using an earlier version of this automation for them.
+
 **Target Python.** ansible-core 2.22 needs **Python 3.9 or later on the target hosts**.
 
 - RHEL 9: the system Python works.
 - RHEL 8: install a newer Python from AppStream (for example `python3.11`) and set
   `ansible_python_interpreter` for those hosts. `package_facts` still reads the rpm database.
-- RHEL 7: there is no Red Hat Python 3.9+. These hosts need a site-provided Python 3.9+, or a controller
-  with an older ansible-core (which is not tested here).
 - AIX: install Python 3.9+ (for example from the AIX Toolbox) and set `ansible_python_interpreter`.
 
 The targets also need `bash` and `expect` (the `expect` paths are in the per-OS vars), plus `tar`/`unzip`
@@ -121,7 +125,7 @@ notification.yml                playbook-level notification entry point -> roles
 ansible.cfg                     host key checking on, no default inventory, YAML output, pipelining
 inventory/example/              example inventory, group_vars and vault example (copy per environment)
 roles/oracle_common/            per-OS variables, input validation, notifications, failure reporting
-  vars/<os>.yml                 platform specifics (Linux, AIX, RedHat, RedHat-7/8/9)
+  vars/<os>.yml                 platform specifics (Linux, AIX, RedHat, RedHat-8/9)
 roles/initialization_role/      staging directories, OS group membership
 roles/oracle_database_install_role/
   tasks/preflight.yml           read-only host safety checks (home, inventory, env file, packages)
@@ -296,7 +300,7 @@ There is no safe generic default for these, so none is shipped.
 | `oracle_common_run_rootpre` | `false` | `true` |
 | `oracle_common_package_manager` | `rpm` (RedHat family), else `""` | `""` |
 | `oracle_common_package_query_command` / `oracle_common_package_query_regex` | `[]` (package_facts is used) | `lslpp -Lc` |
-| `oracle_common_prereq_packages` | `RedHat-7/8/9.yml`, else `[]` (skipped) | 19c filesets for AIX 7.2/7.3 |
+| `oracle_common_prereq_packages` | `RedHat-8/9.yml`, else `[]` (skipped) | 19c filesets for AIX 7.2/7.3 |
 | `oracle_common_inventory_pointer_file` | `/etc/oraInst.loc` | `/etc/oraInst.loc` |
 
 ### oracle_database_install_role: layout and artifacts
@@ -691,6 +695,7 @@ that already has an Oracle home, to see the refusals, and a clean host, for a fu
 | `Invalid or missing inputs: ...` | Every listed input failed validation; the message says what is expected. Secret values are never shown. |
 | `Validation of arguments failed: missing required arguments: ...` | A required job or environment input is missing. Often the `target` host is not in the `oracle_db_servers` group: pass `-e ansible_inventory_groups=oracle_db_servers` or add the host to `hosts.yml`. |
 | `Failed: OS not supported (<system>)` | The kernel is not in `oracle_common_supported_systems`, or there is no `vars/<system>.yml`. |
+| `Failed: <distribution> 7 is not supported` | EL7 (RHEL 7, Oracle Linux 7 and rebuilds) is no longer supported. Upgrade the host to release 8 or 9 (see [Supported platforms](#supported-platforms-and-oracle-versions)). |
 | `The module interpreter ... was not found` / Python version errors | The target needs Python 3.9 or later. Set `ansible_python_interpreter` (see [Supported platforms](#supported-platforms-and-oracle-versions)). |
 | `Host key verification failed` | Add the host key to `known_hosts` (see [Security defaults](#security-defaults)). |
 | `Failed to set permissions on the temporary files Ansible needs to create when becoming an unprivileged user` | Install `acl`, set `ansible_common_remote_group`, or connect as root. |

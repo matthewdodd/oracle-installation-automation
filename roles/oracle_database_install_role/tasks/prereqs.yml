@@ -1,7 +1,7 @@
 ---
 # Prerequisite packages (finding M3). Read-only: nothing on the host is changed here.
 # The list is per OS (oracle_common_prereq_packages, from roles/oracle_common/vars/<os>.yml:
-# RedHat-7/8/9.yml for the Red Hat family including Oracle Linux, AIX.yml for AIX filesets).
+# RedHat-8/9.yml for the Red Hat family including Oracle Linux, AIX.yml for AIX filesets).
 # Missing packages fail the run with their names, before anything changes on the host, unless
 # oracle_database_install_role_ignore_prereqs (alias oracle_ignore_prereqs) is true; that same flag
 # is the only way -ignorePrereq reaches the installer. An empty list skips the check with a message.

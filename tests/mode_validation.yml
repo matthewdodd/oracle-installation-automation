@@ -12,6 +12,10 @@
 # It also covers the '..' path guard (__oracle_common_re_dotdot): a '..' component at the start, in the
 # middle or at the end of a path is rejected, while names that merely contain dots are accepted, both in
 # the oracle_common preflight and in every path checked by the oracle_database_install_role preflight.
+#
+# It also covers the Red Hat family release guard in roles/oracle_common/tasks/os_vars.yml: EL7 (any
+# os_family RedHat distribution with major release 7) is refused before any OS file is loaded, while
+# RHEL 8/9, rebuilds such as Rocky and Oracle Linux 8/9, and AIX are accepted with the prerequisite list of their release file.
 - name: Permission-mode validation regression test
   hosts: localhost
   connection: local
@@ -152,6 +156,45 @@
       - name: installer names that merely contain dots
         paths: {response_file: /u01/oracle/19.0.0.0/db..rsp, response_extra_file: /u01/.hidden/..extra.rsp}
         rejected: []
+    # Simulated facts for the os_vars.yml release guard. AIX is not last, so the Linux variables are loaded
+    # again at the end (the file-mode block above already ran; this keeps the play state Linux-like).
+    platform_cases:
+      - name: RHEL 7 refused
+        facts: {system: Linux, os_family: RedHat, distribution: RedHat, distribution_major_version: "7"}
+        refused: true
+        message: EL7 (RHEL 7, Oracle Linux 7 and rebuilds) is no longer supported
+      - name: Oracle Linux 7 refused
+        facts: {system: Linux, os_family: RedHat, distribution: OracleLinux, distribution_major_version: "7"}
+        refused: true
+        message: OracleLinux 7 is not supported
+      - name: CentOS 6 refused
+        facts: {system: Linux, os_family: RedHat, distribution: CentOS, distribution_major_version: "6"}
+        refused: true
+        message: CentOS 6 is not supported
+      - name: Red Hat family without a release refused
+        facts: {system: Linux, os_family: RedHat, distribution: RedHat}
+        refused: true
+        message: is not supported
+      - name: RHEL 8 accepted
+        facts: {system: Linux, os_family: RedHat, distribution: RedHat, distribution_major_version: "8"}
+        refused: false
+        prereq_file: RedHat-8.yml
+      - name: Rocky 8 accepted
+        facts: {system: Linux, os_family: RedHat, distribution: Rocky, distribution_major_version: "8"}
+        refused: false
+        prereq_file: RedHat-8.yml
+      - name: AIX 7.2 accepted
+        facts: {system: AIX, os_family: AIX, distribution: AIX, distribution_major_version: "7"}
+        refused: false
+        prereq_file: AIX.yml
+      - name: Oracle Linux 9 accepted
+        facts: {system: Linux, os_family: RedHat, distribution: OracleLinux, distribution_major_version: "9"}
+        refused: false
+        prereq_file: RedHat-9.yml
+      - name: RHEL 9 accepted
+        facts: {system: Linux, os_family: RedHat, distribution: RedHat, distribution_major_version: "9"}
+        refused: false
+        prereq_file: RedHat-9.yml
   tasks:
     - name: Run the oracle_common cases
       ansible.builtin.include_tasks: tasks/common_mode_case.yml
@@ -242,3 +285,10 @@
             path: "{{ mode_validation_tmp.path }}"
             state: absent
           when: mode_validation_tmp.path is defined
+
+    - name: Run the Red Hat family release guard cases
+      ansible.builtin.include_tasks: tasks/platform_case.yml
+      loop: "{{ platform_cases }}"
+      loop_control:
+        loop_var: platform_case
+        label: "{{ platform_case.name }}"

@@ -23,7 +23,7 @@ argument_specs:
         oracle_common_group_members_command and oracle_common_group_members_regex (exact membership lookup,
         e.g. [/usr/bin/getent, group]), oracle_common_run_rootpre, oracle_common_package_manager,
         oracle_common_package_query_command and oracle_common_package_query_regex (AIX - lslpp -Lc),
-        oracle_common_prereq_packages (RedHat-7/8/9.yml, AIX.yml; empty skips the check),
+        oracle_common_prereq_packages (RedHat-8/9.yml, AIX.yml; empty skips the check),
         oracle_common_inventory_pointer_file (/etc/oraInst.loc on Linux and AIX))
         come from vars/<os>.yml and can be overridden per host or group; they are
         not listed as options because they are only known after the OS variables are loaded.
