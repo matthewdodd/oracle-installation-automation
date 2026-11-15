@@ -7,6 +7,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from its first
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-15
+
 This is the production-readiness rework of the original playbook. The playbook can now run on a
 supported ansible-core. It is safe on hosts that already run Oracle, has no environment-specific values
 in code, and is secure by default. The job inputs used by existing AAP job templates are unchanged.
@@ -231,3 +233,6 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
   release version in a trailing comment. `.github/dependabot.yml` checks the pins weekly.
 - CI checkouts set `persist-credentials: false`, so the job's `GITHUB_TOKEN` is not left in the
   checked-out repository's git config for later steps. No CI step uses authenticated git.
+
+[Unreleased]: https://github.com/matthewdodd/oracle-installation-automation/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/matthewdodd/oracle-installation-automation/releases/tag/v1.0.0
