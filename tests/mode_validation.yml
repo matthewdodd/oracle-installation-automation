@@ -17,9 +17,11 @@
 # (either case) or an http(s) checksum-file URL; all-zero placeholder digests, wrong lengths, non-hex digits and
 # other URL schemes are rejected, and the errors name the artifact without printing the value.
 #
-# It also covers the Red Hat family release guard in roles/oracle_common/tasks/os_vars.yml: EL7 (any
-# os_family RedHat distribution with major release 7) is refused before any OS file is loaded, while
-# RHEL 8/9, rebuilds such as Rocky and Oracle Linux 8/9, and AIX are accepted with the prerequisite list of their release file.
+# It also covers the Red Hat family release guard in roles/oracle_common/tasks/os_vars.yml: any os_family RedHat
+# distribution with a major release before 8 (EL7, CentOS 6, Amazon Linux 2) is refused before any OS file is loaded,
+# with a message naming the distribution and release, while RHEL 8/9, rebuilds such as Rocky and Oracle Linux 8/9, and
+# AIX are accepted with the prerequisite list of their release file, and Amazon Linux 2023 and Fedora 40 are accepted
+# with the empty list of RedHat.yml.
 - name: Permission-mode validation regression test
   hosts: localhost
   connection: local
@@ -239,7 +241,7 @@
       - name: RHEL 7 refused
         facts: {system: Linux, os_family: RedHat, distribution: RedHat, distribution_major_version: "7"}
         refused: true
-        message: EL7 (RHEL 7, Oracle Linux 7 and rebuilds) is no longer supported
+        message: RedHat 7 is not supported
       - name: Oracle Linux 7 refused
         facts: {system: Linux, os_family: RedHat, distribution: OracleLinux, distribution_major_version: "7"}
         refused: true
@@ -248,6 +250,10 @@
         facts: {system: Linux, os_family: RedHat, distribution: CentOS, distribution_major_version: "6"}
         refused: true
         message: CentOS 6 is not supported
+      - name: Amazon Linux 2 refused
+        facts: {system: Linux, os_family: RedHat, distribution: Amazon, distribution_major_version: "2"}
+        refused: true
+        message: Amazon 2 is not supported
       - name: Red Hat family without a release refused
         facts: {system: Linux, os_family: RedHat, distribution: RedHat}
         refused: true
@@ -272,6 +278,17 @@
         facts: {system: Linux, os_family: RedHat, distribution: RedHat, distribution_major_version: "9"}
         refused: false
         prereq_file: RedHat-9.yml
+      # No release file for these: they load Linux.yml + RedHat.yml and keep its empty list, as before the guard.
+      - name: Amazon Linux 2023 accepted
+        facts: {system: Linux, os_family: RedHat, distribution: Amazon, distribution_major_version: "2023"}
+        refused: false
+        prereq_file: RedHat.yml
+        prereq_empty: true
+      - name: Fedora 40 accepted
+        facts: {system: Linux, os_family: RedHat, distribution: Fedora, distribution_major_version: "40"}
+        refused: false
+        prereq_file: RedHat.yml
+        prereq_empty: true
   tasks:
     - name: Run the oracle_common cases
       ansible.builtin.include_tasks: tasks/common_mode_case.yml

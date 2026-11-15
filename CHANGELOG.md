@@ -15,8 +15,9 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
 
 - **ansible-core 2.22 is required** on the controller (Python 3.13 or later). The original playbook used
   `include:`, which current ansible-core no longer accepts. Target hosts need Python 3.9 or later.
-- **EL7 is no longer supported.** RHEL 7, Oracle Linux 7 and other Red Hat family releases before 8 are
-  refused before anything changes on the host, because they have no vendor Python 3.9+. See Removed.
+- **EL7 is no longer supported.** RHEL 7, Oracle Linux 7 and other Red Hat family releases before 8,
+  including Amazon Linux 2, are refused before anything changes on the host, because they have no vendor
+  Python 3.9+. See Removed.
 - **New required environment inputs.** They used to be placeholders hard-coded in the code, and now
   have no default:
   - `oracle_common_artifactory_url` (was a placeholder repository URL in the code).
@@ -176,10 +177,12 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
 - Every `ignore_errors`.
 - All `0777` modes. This has no toggle.
 - **EL7 support (breaking change).** RHEL 7, Oracle Linux 7 and other Red Hat family releases before 8
-  are no longer supported, and `roles/oracle_common/vars/RedHat-7.yml` is gone. ansible-core 2.22 needs
-  Python 3.9 or later on the targets and EL7 has no vendor Python 3.9+. Such hosts are now refused early
-  by `roles/oracle_common/tasks/os_vars.yml` with a clear message (without the check they would have run
-  with an empty prerequisite list and skipped the package check); `tests/mode_validation.yml` covers it.
+  (including Amazon Linux 2) are no longer supported, and `roles/oracle_common/vars/RedHat-7.yml` is gone.
+  ansible-core 2.22 needs Python 3.9 or later on the targets and these releases have no vendor Python 3.9+.
+  Such hosts are now refused early by `roles/oracle_common/tasks/os_vars.yml` with a message naming the
+  distribution and release (for example `Amazon 2`); without the check they would have run with an empty
+  prerequisite list and skipped the package check. `tests/mode_validation.yml` covers it, including Amazon
+  Linux 2 (refused) and Amazon Linux 2023 and Fedora (accepted).
 
 ### Fixed
 

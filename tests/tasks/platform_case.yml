@@ -1,13 +1,19 @@
 ---
 # One platform case: run the real oracle_common tasks/os_vars.yml with simulated facts (task vars override the
 # gathered ansible_facts), then compare the outcome (refused or accepted) and, when accepted, the prerequisite
-# list it loaded with the one in the expected release file (prereq_file).
+# list it loaded with the one in the expected release file (prereq_file). The list is reset to a sentinel before
+# each case, so a case never passes on the list loaded by the previous one. prereq_empty: true marks an accepted
+# platform without a release file, whose list is expected to be empty (the package check is skipped).
 - name: Run the oracle_common OS checks ({{ platform_case.name }})
   block:
     - name: Reset the outcome of the previous case
       ansible.builtin.set_fact:
         __platform_case_refused: false
         __platform_case_message: ""
+
+    - name: Reset the prerequisite list loaded by the previous case
+      ansible.builtin.include_vars:
+        file: ../vars/platform_case_reset.yml
 
     - name: Load the OS variables
       ansible.builtin.include_role:
@@ -26,7 +32,7 @@
     that:
       - __platform_case_refused == platform_case.refused
       - not platform_case.refused or (platform_case.message in __platform_case_message)
-      - platform_case.refused or (__oracle_common_prereq_packages | length > 0)
+      - platform_case.refused or (__oracle_common_prereq_packages | length > 0) != (platform_case.prereq_empty | default(false))
       - platform_case.refused or (__oracle_common_prereq_packages == __platform_case_expected_packages)
     fail_msg: >-
       refused {{ __platform_case_refused }} (expected {{ platform_case.refused }}); message

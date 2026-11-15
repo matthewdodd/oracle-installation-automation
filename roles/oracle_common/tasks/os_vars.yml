@@ -17,9 +17,10 @@
       Supported: {{ oracle_common_supported_systems | join(', ') }}, each with a vars/<system>.yml file in the oracle_common role.
     quiet: true
 
-# Without this check an EL7 host would run with an empty prerequisite list (there is no RedHat-7.yml) and
-# skip the package check. The release must be a whole number at least __oracle_common_redhat_min_major_version
-# (vars/main.yml); AIX and other Linux distributions are not affected.
+# Without this check an EL7 host (or Amazon Linux 2, also os_family RedHat) would run with an empty
+# prerequisite list (there is no RedHat-7.yml) and skip the package check. The release must be a whole number
+# at least __oracle_common_redhat_min_major_version (vars/main.yml); AIX and other Linux distributions are not
+# affected. The message names the refused distribution and release from the facts (e.g. "Amazon 2", "RedHat 7").
 - name: Check the Red Hat family release is supported
   ansible.builtin.assert:
     that:
@@ -28,9 +29,9 @@
     fail_msg: >-
       Failed: {{ ansible_facts['distribution'] | default('Red Hat family') }}
       {{ ansible_facts['distribution_major_version'] | default('(unknown release)') }} is not supported.
-      EL7 (RHEL 7, Oracle Linux 7 and rebuilds) is no longer supported since this release: ansible-core 2.22
-      needs Python 3.9 or later on the target. Supported Red Hat family releases: {{ __oracle_common_redhat_min_major_version }}
-      and later. See "Supported platforms and Oracle versions" in README.md.
+      Red Hat family releases before {{ __oracle_common_redhat_min_major_version }} are no longer supported since this
+      release: ansible-core 2.22 needs Python 3.9 or later on the target. Supported Red Hat family releases:
+      {{ __oracle_common_redhat_min_major_version }} and later. See "Supported platforms and Oracle versions" in README.md.
     quiet: true
   when: ansible_facts['os_family'] | default('') == 'RedHat'
 

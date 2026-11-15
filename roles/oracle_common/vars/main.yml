@@ -1,7 +1,8 @@
 ---
 # Internal validation values used by tasks/os_vars.yml and tasks/preflight.yml. Not meant to be overridden.
-# Oldest Red Hat family major release (RHEL and rebuilds: os_family RedHat) the roles support. EL7 is not
-# supported: ansible-core 2.22 needs Python 3.9 or later on the targets and EL7 has no vendor Python 3.9+.
+# Oldest Red Hat family major release (RHEL and rebuilds: os_family RedHat) the roles support. EL7 and Amazon
+# Linux 2 are not supported: ansible-core 2.22 needs Python 3.9 or later on the targets and they have no vendor
+# Python 3.9+.
 # Not an input: there is no release file (vars/RedHat-<major>.yml) for older releases.
 __oracle_common_redhat_min_major_version: 8
 # Every pattern is anchored with \A ... \Z (never ^ ... $): Python's `$` also matches just before

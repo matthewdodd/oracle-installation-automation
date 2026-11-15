@@ -73,17 +73,20 @@ Contents
 | Oracle Linux, Rocky, AlmaLinux 8/9 | same files (`os_family` RedHat) | Use the RHEL release file. |
 | RHEL 7, Oracle Linux 7 and other EL7 rebuilds | refused by `tasks/os_vars.yml` | **Not supported** (see below). |
 | IBM AIX 7.2 / 7.3 | `vars/AIX.yml` | `lslpp` fileset check, `chgrpmem`, `rootpre.sh`. |
-| Other Linux | `vars/Linux.yml` only | Runs, but the package check is skipped until a vars file is added. |
+| Amazon Linux 2 | refused by `tasks/os_vars.yml` | **Not supported**: `os_family` RedHat with release 2, below 8. |
+| Other Linux (including Fedora and Amazon Linux 2023) | `vars/Linux.yml` (+ `RedHat.yml` for `os_family` RedHat) | Runs, but the package check is skipped until a vars file is added. |
 
 Platform specifics live only in `roles/oracle_common/vars/`. `tasks/os_vars.yml` loads every file that
 exists, generic first and most specific last: `<system>.yml`, `<os_family>.yml`, `<distribution>.yml`,
 `<os_family>-<major>.yml`, then `<distribution>-<major>.yml`. **To support a new distribution or release,
 add one file.** Kernels other than Linux and AIX are refused (`oracle_common_supported_systems`).
 
-**EL7 is not supported.** RHEL 7, Oracle Linux 7, CentOS 7 and other Red Hat family releases before 8
-are refused before anything runs on the host (`Failed: <distribution> 7 is not supported`). ansible-core
-2.22 needs Python 3.9 or later on the targets, and EL7 has no vendor Python 3.9+. Upgrade those hosts to
-release 8 or 9, or keep using an earlier version of this automation for them.
+**EL7 is not supported.** RHEL 7, Oracle Linux 7, CentOS 7 and other Red Hat family releases before 8,
+including Amazon Linux 2 (`os_family` RedHat, release 2), are refused before anything runs on the host
+(`Failed: <distribution> <release> is not supported`, for example `RedHat 7` or `Amazon 2`). ansible-core
+2.22 needs Python 3.9 or later on the targets, and these releases have no vendor Python 3.9+. Upgrade those
+hosts to release 8 or 9 (Amazon Linux 2023 for Amazon Linux 2), or keep using an earlier version of this
+automation for them.
 
 **Target Python.** ansible-core 2.22 needs **Python 3.9 or later on the target hosts**.
 
@@ -695,7 +698,7 @@ that already has an Oracle home, to see the refusals, and a clean host, for a fu
 | `Invalid or missing inputs: ...` | Every listed input failed validation; the message says what is expected. Secret values are never shown. |
 | `Validation of arguments failed: missing required arguments: ...` | A required job or environment input is missing. Often the `target` host is not in the `oracle_db_servers` group: pass `-e ansible_inventory_groups=oracle_db_servers` or add the host to `hosts.yml`. |
 | `Failed: OS not supported (<system>)` | The kernel is not in `oracle_common_supported_systems`, or there is no `vars/<system>.yml`. |
-| `Failed: <distribution> 7 is not supported` | EL7 (RHEL 7, Oracle Linux 7 and rebuilds) is no longer supported. Upgrade the host to release 8 or 9 (see [Supported platforms](#supported-platforms-and-oracle-versions)). |
+| `Failed: <distribution> <release> is not supported` | Red Hat family releases before 8 (RHEL 7, Oracle Linux 7 and rebuilds, Amazon Linux 2) are no longer supported. Upgrade the host to release 8 or 9, or Amazon Linux 2023 (see [Supported platforms](#supported-platforms-and-oracle-versions)). |
 | `The module interpreter ... was not found` / Python version errors | The target needs Python 3.9 or later. Set `ansible_python_interpreter` (see [Supported platforms](#supported-platforms-and-oracle-versions)). |
 | `Host key verification failed` | Add the host key to `known_hosts` (see [Security defaults](#security-defaults)). |
 | `Failed to set permissions on the temporary files Ansible needs to create when becoming an unprivileged user` | Install `acl`, set `ansible_common_remote_group`, or connect as root. |
