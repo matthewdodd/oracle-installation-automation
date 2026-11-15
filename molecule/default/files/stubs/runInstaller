@@ -1,0 +1,119 @@
+#!/bin/bash
+#
+# TEST STUB - NOT ORACLE SOFTWARE. Molecule stand-in for Oracle's runInstaller, shipped inside the fake
+# LINUX_binaries.tar.gz (molecule/default/files/build_artifacts.bash). It behaves like the parts of a
+# silent software-only install that the playbook relies on:
+#   - refuses to run as root (as the real installer does);
+#   - install:  runInstaller [-ignorePrereq] -waitforcompletion -silent -responseFile <file>
+#               checks the response file (ORACLE_HOME is this home, INVENTORY_LOCATION is an existing
+#               writable directory, UNIX_GROUP_NAME is a group of the caller), registers the home in
+#               <INVENTORY_LOCATION>/ContentsXML/inventory.xml (fails if it is already registered),
+#               records its arguments and the response file under <ORACLE_HOME>/install/ for verify.yml,
+#               and ends with the success line database_install.bash looks for;
+#   - detach:   runInstaller -silent -waitforcompletion -detachHome ORACLE_HOME=<home>
+#               (used by the role's rollback) removes the home from the inventory named by /etc/oraInst.loc.
+# The same file is installed as <ORACLE_HOME>/runInstaller and <ORACLE_HOME>/oui/bin/runInstaller.
+set -u
+
+say () {
+  printf '%s\n' "$*"
+}
+
+die () {
+  say "[FATAL] $*"
+  exit 1
+}
+
+script_dir=$(cd "$(dirname "$0")" && pwd -P) || die "cannot resolve the installer directory"
+oracle_home=${script_dir%/oui/bin}
+
+if [[ "$(id -u)" -eq 0 ]]; then
+  die "[INS-32012] runInstaller must not be run as root."
+fi
+
+response_file=""
+detach=false
+detach_home=""
+silent=false
+ignore_prereq=false
+all_args="$*"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -responseFile)
+      [[ $# -ge 2 ]] || die "-responseFile needs a file"
+      response_file=$2
+      shift
+      ;;
+    -silent) silent=true ;;
+    -waitforcompletion) ;;
+    -ignorePrereq) ignore_prereq=true ;;
+    -detachHome) detach=true ;;
+    ORACLE_HOME=*) detach_home=${1#ORACLE_HOME=} ;;
+    *) die "unsupported argument '$1' (test stub)" ;;
+  esac
+  shift
+done
+
+[[ "$silent" == true ]] || die "the test stub only supports -silent"
+
+# inventory_xml <inventory directory>
+inventory_xml () {
+  printf '%s/ContentsXML/inventory.xml' "$1"
+}
+
+if [[ "$detach" == true ]]; then
+  [[ -n "$detach_home" ]] || die "-detachHome needs ORACLE_HOME=<home>"
+  inventory=$(sed -n 's/^inventory_loc=//p' /etc/oraInst.loc 2>/dev/null | tail -n 1)
+  [[ -n "$inventory" ]] || die "no inventory_loc in /etc/oraInst.loc"
+  xml=$(inventory_xml "$inventory")
+  [[ -f "$xml" ]] || die "$xml not found"
+  tmp=$(mktemp) || die "mktemp"
+  grep -v -F "LOC=\"$detach_home\"" "$xml" > "$tmp"
+  cat "$tmp" > "$xml"
+  rm -f "$tmp"
+  say "'DetachHome' was successful."
+  exit 0
+fi
+
+[[ -n "$response_file" && -r "$response_file" ]] || die "response file '$response_file' not readable"
+
+# rsp_value <key>: last value of key=value in the response file (keys contain dots: fixed-string match).
+rsp_value () {
+  awk -v key="$1" 'index($0, key "=") == 1 { value = substr($0, length(key) + 2) } END { print value }' "$response_file"
+}
+
+rsp_home=$(rsp_value ORACLE_HOME)
+inventory=$(rsp_value INVENTORY_LOCATION)
+os_group=$(rsp_value UNIX_GROUP_NAME)
+edition=$(rsp_value oracle.install.db.InstallEdition)
+option=$(rsp_value oracle.install.option)
+
+[[ "$rsp_home" == "$oracle_home" ]] || die "ORACLE_HOME in the response file ($rsp_home) is not this home ($oracle_home)"
+[[ -n "$edition" && -n "$option" ]] || die "InstallEdition and install option are required"
+[[ -d "$inventory" && -w "$inventory" ]] || die "[INS-32035] inventory location '$inventory' is not a writable directory"
+id -G -n | tr ' ' '\n' | grep -q -x -F -- "$os_group" || die "[INS-35341] the user is not a member of group '$os_group'"
+
+xml=$(inventory_xml "$inventory")
+mkdir -p "$inventory/ContentsXML" || die "cannot create $inventory/ContentsXML"
+if [[ ! -f "$xml" ]]; then
+  printf '%s\n' '<?xml version="1.0" standalone="yes" ?>' '<INVENTORY>' '<HOME_LIST>' '</HOME_LIST>' '</INVENTORY>' > "$xml" \
+    || die "cannot write $xml"
+fi
+if grep -q -F "LOC=\"$oracle_home\"" "$xml"; then
+  die "[INS-35074] $oracle_home is already registered in the central inventory $inventory"
+fi
+index=$(( $(grep -c '<HOME ' "$xml") + 1 ))
+tmp=$(mktemp) || die "mktemp"
+awk -v line="<HOME NAME=\"OraDB19Home${index}\" LOC=\"${oracle_home}\" TYPE=\"O\" IDX=\"${index}\"/>" \
+  '/<\/HOME_LIST>/ { print line } { print }' "$xml" > "$tmp"
+cat "$tmp" > "$xml"
+rm -f "$tmp"
+
+mkdir -p "$oracle_home/install" || die "cannot create $oracle_home/install"
+printf '%s\n' "$all_args" > "$oracle_home/install/molecule_runinstaller.args"
+cp "$response_file" "$oracle_home/install/molecule_response.rsp"
+
+say "Launching Oracle Database Setup Wizard... (test stub)"
+say "ignorePrereq=$ignore_prereq edition=$edition option=$option inventory=$inventory group=$os_group"
+say "The response file for this session can be found at: $response_file"
+say "Successfully Setup Software."

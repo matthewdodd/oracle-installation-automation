@@ -1,0 +1,207 @@
+---
+# Validates every input before the play changes anything on a host. All problems are reported
+# together. Secret values (webhook URL, credentials, repository URL) are never echoed.
+
+# Permission modes are normalised to an octal string before they are validated, and the tasks apply
+# the normalised value (oracle_common_modes.<name>), so the checked mode and the applied mode are the
+# same. An unquoted YAML mode is an integer: `script_permission: 0777` parses as 511 and `750` as
+# decimal 750. '%04o' turns 511 back into "0777" (rejected) and 420 (0644) into "0644" (accepted);
+# decimal 750 becomes "1356", which is not a plain 3-digit mode and is rejected with a hint to quote it.
+- name: Normalise the permission modes
+  ansible.builtin.set_fact:
+    oracle_common_modes:
+      script_permission: >-
+        {{ ('%04o' | format(oracle_common_script_permission)) if oracle_common_script_permission is integer
+           else (oracle_common_script_permission | string | trim) }}
+      oracle_common_staging_dir_mode: >-
+        {{ ('%04o' | format(oracle_common_staging_dir_mode)) if oracle_common_staging_dir_mode is integer
+           else (oracle_common_staging_dir_mode | string | trim) }}
+      oracle_common_staging_parent_mode: >-
+        {{ ('%04o' | format(oracle_common_staging_parent_mode)) if oracle_common_staging_parent_mode is integer
+           else (oracle_common_staging_parent_mode | string | trim) }}
+
+- name: Collect input validation errors
+  ansible.builtin.set_fact:
+    __oracle_common_preflight_errors: "{{ __oracle_common_checks | selectattr('failed') | map(attribute='msg') | list }}"
+  vars:
+    __sid_ok: "{{ DATABASE_NAME is defined and (DATABASE_NAME | string) is match(__oracle_common_re_sid) }}"
+    __owner_ok: "{{ db_owner is defined and (db_owner | string) is match(__oracle_common_re_posix_name) }}"
+    __version_ok: "{{ database_version is defined and (database_version | string) in oracle_common_artifactory_version_map }}"
+    __mountpoint_ok: >-
+      {{ mountpoint is defined and (mountpoint | string) is match(__oracle_common_re_abs_path)
+         and (mountpoint | string) is not search(__oracle_common_re_dotdot) }}
+    __prefix_ok: >-
+      {{ oracle_common_site_prefix is defined and (oracle_common_site_prefix | string) is match(__oracle_common_re_abs_path)
+         and (oracle_common_site_prefix | string) is not search(__oracle_common_re_dotdot) }}
+    __staging_ok: >-
+      {{ (oracle_common_staging_base | string) is match(__oracle_common_re_abs_path)
+         and (oracle_common_staging_base | string) is not search(__oracle_common_re_dotdot) }}
+    # Names of the normalised modes that are not a plain octal mode, or grant group or world write.
+    __oracle_common_bad_modes: >-
+      {{ (oracle_common_modes | dict2items | rejectattr('value', 'match', __oracle_common_re_octal_mode) | map(attribute='key') | list)
+         + (oracle_common_modes | dict2items | selectattr('value', 'match', __oracle_common_re_mode_world_writable) | map(attribute='key') | list)
+         + (oracle_common_modes | dict2items | selectattr('value', 'match', __oracle_common_re_mode_group_writable) | map(attribute='key') | list) }}
+    __oracle_common_checks:
+      - failed: "{{ not (target is defined and (target | string | trim | length > 0)) }}"
+        msg: "target is required: a comma-separated list of hosts, e.g. -e target=dbhost01.example.com"
+      - failed: "{{ not __sid_ok }}"
+        msg: >-
+          DATABASE_NAME must match {{ __oracle_common_re_sid }} (a letter, then up to 7 letters, digits or underscores);
+          got '{{ DATABASE_NAME | default('<undefined>') }}'
+      - failed: "{{ not __owner_ok }}"
+        msg: "db_owner must be a POSIX user name ({{ __oracle_common_re_posix_name }}); got '{{ db_owner | default('<undefined>') }}'"
+      - failed: "{{ not __version_ok }}"
+        msg: >-
+          database_version must be one of {{ oracle_common_artifactory_version_map.keys() | list | join(', ') }}
+          (there is no fallback); got '{{ database_version | default('<undefined>') }}'
+      - failed: "{{ not __mountpoint_ok }}"
+        msg: >-
+          mountpoint must be an absolute path without whitespace, shell metacharacters or '..';
+          got '{{ mountpoint | default('<undefined>') }}'
+      - failed: "{{ not __prefix_ok }}"
+        msg: >-
+          oracle_common_site_prefix is required: the absolute site directory for <DB>.env files and software staging
+          (e.g. /local); got '{{ oracle_common_site_prefix | default('<undefined>') }}'
+      - failed: "{{ not __staging_ok }}"
+        msg: "oracle_common_staging_base must be an absolute path without whitespace, shell metacharacters or '..'"
+      - failed: >-
+          {{ __sid_ok and __prefix_ok and __staging_ok and not (
+               (oracle_common_remote_script_directory | string) is match(__oracle_common_re_abs_path)
+               and (oracle_common_remote_output_directory | string) is match(__oracle_common_re_abs_path)
+               and (oracle_common_env_file | string) is match(__oracle_common_re_abs_path)) }}
+        msg: >-
+          remote_script_directory, remote_output_directory (oracle_common_remote_*_directory) and oracle_common_env_file
+          must be absolute paths without shell metacharacters
+      - failed: "{{ 'script_permission' in __oracle_common_bad_modes }}"
+        msg: >-
+          script_permission must be an octal mode without group or world write access (e.g. "0750"; 0777 is not allowed;
+          quote the mode, an unquoted YAML number is read as an integer); got '{{ oracle_common_modes.script_permission }}'
+      - failed: "{{ 'oracle_common_staging_dir_mode' in __oracle_common_bad_modes }}"
+        msg: >-
+          oracle_common_staging_dir_mode must be an octal mode without group or world write access (e.g. "0750" or "0700";
+          quote the mode); got '{{ oracle_common_modes.oracle_common_staging_dir_mode }}'
+      - failed: "{{ 'oracle_common_staging_parent_mode' in __oracle_common_bad_modes }}"
+        msg: >-
+          oracle_common_staging_parent_mode must be an octal mode without group or world write access (e.g. "0755";
+          quote the mode); got '{{ oracle_common_modes.oracle_common_staging_parent_mode }}'
+      - failed: >-
+          {{ (oracle_common_manage_group_membership | bool)
+             and not (oracle_common_group_membership_become_user | default('') | string) is match(__oracle_common_re_posix_name) }}
+        msg: >-
+          oracle_common_group_membership_become_user must be a POSIX user name;
+          got '{{ oracle_common_group_membership_become_user | default('<undefined>') }}'
+      - failed: >-
+          {{ (oracle_common_manage_group_membership | bool)
+             and not (([oracle_common_group_add_command.split() | first | default('')] if oracle_common_group_add_command is string
+                       else oracle_common_group_add_command[:1])
+                      + ([oracle_common_group_members_command] if oracle_common_group_members_command is string
+                         else oracle_common_group_members_command[:1]))
+                     | select('match', __oracle_common_re_abs_path) | list | length == 2 }}
+        msg: >-
+          oracle_common_group_add_command and oracle_common_group_members_command must start with an absolute path
+          (e.g. [/bin/gpasswd, --add] and [/usr/bin/getent, group])
+      - failed: "{{ not (oracle_common_privileged_user | default('') | string) is match(__oracle_common_re_posix_name) }}"
+        msg: "oracle_common_privileged_user (alias b_user) must be a POSIX user name; got '{{ oracle_common_privileged_user | default('<undefined>') }}'"
+      - failed: >-
+          {{ (oracle_common_manage_group_membership | bool)
+             and not (oracle_common_group_name | default('') | string) is match(__oracle_common_re_posix_name) }}
+        msg: >-
+          oracle_common_group_name (or GROUP_NAME) is required while oracle_common_manage_group_membership is true:
+          the OS group db_owner and the privileged user (b_user) join; got '{{ oracle_common_group_name | default('<undefined>') }}'
+      - failed: "{{ (oracle_common_root_script_method | string) not in ['wrapper', 'become'] }}"
+        msg: >-
+          oracle_common_root_script_method (alias oracle_root_script_method) must be wrapper (the site root wrapper)
+          or become (run root.sh directly through become); got '{{ oracle_common_root_script_method }}'
+      - failed: >-
+          {{ (oracle_common_root_script_method | string) == 'wrapper'
+             and not ((oracle_common_root_wrapper_path | default('') | string) is match(__oracle_common_re_abs_path)
+                      and (oracle_common_root_wrapper_path | default('') | string | length > 1)) }}
+        msg: >-
+          oracle_common_root_wrapper_path is required while oracle_common_root_script_method is wrapper: absolute path of
+          the wrapper that runs root.sh / rootpre.sh (or set oracle_common_root_script_method=become)
+      - failed: "{{ not ((oracle_common_root_wrapper_timeout | string) is match(__oracle_common_re_uint) and (oracle_common_root_wrapper_timeout | int) > 0) }}"
+        msg: "oracle_common_root_wrapper_timeout must be a positive number of seconds"
+      - failed: >-
+          {{ (oracle_common_root_script_method | string) == 'become'
+             and not (oracle_common_root_script_become_user | default('') | string) is match(__oracle_common_re_posix_name) }}
+        msg: "oracle_common_root_script_become_user must be a POSIX user name; got '{{ oracle_common_root_script_become_user | default('<undefined>') }}'"
+      - failed: >-
+          {{ oracle_common_root_script_args is string or oracle_common_root_script_args is mapping
+             or oracle_common_root_script_args is not iterable }}
+        msg: "oracle_common_root_script_args must be a list of arguments (default [])"
+      - failed: >-
+          {{ (oracle_common_prereq_packages is string or oracle_common_prereq_packages is not iterable)
+             or (oracle_common_package_query_command is string or oracle_common_package_query_command is not iterable)
+             or ((oracle_common_package_query_command | length > 0)
+                 and not ((oracle_common_package_query_command | first | string) is match(__oracle_common_re_abs_path)
+                          and (oracle_common_package_query_regex | string | length > 0))) }}
+        msg: >-
+          oracle_common_prereq_packages must be a list, and oracle_common_package_query_command a list that is empty or
+          starts with an absolute path (with a non-empty oracle_common_package_query_regex)
+      - failed: "{{ not (oracle_common_artifactory_url | default('') | string) is match(__oracle_common_re_url) }}"
+        msg: >-
+          oracle_common_artifactory_url is required: the http(s) URL of the repository folder that holds one
+          sub-folder per Oracle release (value not shown)
+      - failed: >-
+          {{ (oracle_common_artifactory_username | string | length > 0)
+             != (oracle_common_artifactory_password | string | length > 0) }}
+        msg: "oracle_common_artifactory_username and oracle_common_artifactory_password must be set together (values not shown)"
+      - failed: >-
+          {{ (oracle_common_artifactory_username | string | length > 0
+              or (oracle_common_artifactory_url | default('') | urlsplit('username') | default('', true) | length > 0))
+             and (oracle_common_artifactory_url | default('') | string | lower) is match('\Ahttp://') }}
+        msg: "Repository credentials are never sent over plain http: use an https oracle_common_artifactory_url (value not shown)"
+      - failed: >-
+          {{ (oracle_common_artifactory_ca_path | string | length > 0)
+             and not (oracle_common_artifactory_ca_path | string) is match(__oracle_common_re_abs_path) }}
+        msg: "oracle_common_artifactory_ca_path must be an absolute path, or empty; got '{{ oracle_common_artifactory_ca_path }}'"
+      - failed: >-
+          {{ (oracle_common_notification_ca_path | string | length > 0)
+             and not (oracle_common_notification_ca_path | string) is match(__oracle_common_re_abs_path) }}
+        msg: "oracle_common_notification_ca_path must be an absolute path, or empty; got '{{ oracle_common_notification_ca_path }}'"
+      - failed: >-
+          {{ (oracle_common_patch_file_name | string | length > 0)
+             and not (oracle_common_patch_file_name | string) is match(__oracle_common_re_file_name) }}
+        msg: "oracle_common_patch_file_name must be a plain file name; got '{{ oracle_common_patch_file_name }}'"
+      - failed: >-
+          {{ (oracle_common_https_proxy | string | length > 0)
+             and not (oracle_common_https_proxy | string) is match(__oracle_common_re_url) }}
+        msg: "oracle_common_https_proxy must be an http(s) URL such as http://proxy.example.com:8080, or empty (value not shown)"
+      - failed: >-
+          {{ (oracle_common_job_url_base | string | length > 0)
+             and not (oracle_common_job_url_base | string) is match(__oracle_common_re_url) }}
+        msg: "oracle_common_job_url_base must be an http(s) URL such as https://aap.example.com/#/jobs/playbook/, or empty"
+      - failed: >-
+          {{ (oracle_common_notification_webhook_url | string | length > 0)
+             and not (oracle_common_notification_webhook_url | string) is match(__oracle_common_re_https_url) }}
+        msg: "oracle_common_notification_webhook_url must be an https URL (a Teams Workflows webhook), or empty (value not shown)"
+  no_log: true
+
+- name: Validate inputs
+  ansible.builtin.assert:
+    that: __oracle_common_preflight_errors | length == 0
+    fail_msg: "Invalid or missing inputs: {{ __oracle_common_preflight_errors | join(' | ') }}"
+    success_msg: "All inputs are valid"
+
+- name: Report input warnings
+  ansible.builtin.debug:
+    msg: "WARNING: {{ item }}"
+  loop: "{{ __oracle_common_preflight_warnings }}"
+  vars:
+    __oracle_common_preflight_warnings: >-
+      {{ ([('Oracle ' ~ database_version ~ ' is out of Oracle Premier/Extended support; plan a move to a supported release.')]
+          if (database_version | string) in oracle_common_desupported_versions else [])
+         + ([('oracle_common_patch_file_name is not set; falling back to the date-derived name '
+              ~ oracle_common_patch_file_name_fallback
+              ~ ' (January bundle of the current year). Pin the patch file name explicitly.')]
+            if (oracle_common_patch_file_name | string | length == 0)
+               and (oracle_database_install_role_patch_file_name | default(oracle_common_patch_file_name_fallback)) == oracle_common_patch_file_name_fallback
+            else [])
+         + (['oracle_common_artifact_checksum_required is false: artifacts missing from oracle_common_artifact_checksums are not verified.']
+            if not (oracle_common_artifact_checksum_required | bool) else [])
+         + (['oracle_common_artifactory_validate_certs is false: downloads and credentials can be intercepted; use oracle_common_artifactory_ca_path.']
+            if not (oracle_common_artifactory_validate_certs | bool) else [])
+         + (['oracle_common_artifactory_url uses plain http: downloads rely on the checksums alone; prefer https.']
+            if (oracle_common_artifactory_url | string | lower) is match('\Ahttp://') else [])
+         + (['oracle_common_artifactory_url contains credentials; move them to oracle_common_artifactory_username/password in Ansible Vault.']
+            if (oracle_common_artifactory_url | urlsplit('username') | default('', true) | length > 0) else []) }}

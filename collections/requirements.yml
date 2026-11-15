@@ -1,0 +1,5 @@
+---
+# Install with:  ansible-galaxy collection install -r collections/requirements.yml
+# The playbook only uses ansible.builtin modules and plugins (community.general is no longer
+# needed: the Teams notification posts with ansible.builtin.uri). Add pinned collections here.
+collections: []

@@ -1,32 +1,16 @@
 ---
-- set_fact:
-    remote_script_directory: "/tmp/ora_ansible_scripts_{{ DATABASE_NAME }}"
-    remote_output_directory: "/tmp/oracle_database_install_{{ DATABASE_NAME }}"
-
-- name: Remove {{ remote_script_directory }} if exists
-  block:
-    - name: Remove {{ remote_script_directory }} if exists - ANSIBLE
-      ansible.builtin.file:
-        path: "{{ remote_script_directory }}"
-        state: absent
-  rescue:
-    - name: Remove {{ remote_script_directory }} if exists - {{ db_owner }}
-      become: yes
-      become_user: "{{ db_owner }}"
-      ansible.builtin.file:
-        path: "{{ remote_script_directory }}"
-        state: absent
-
-- name: Remove {{ remote_output_directory }} if exists
-  block:
-    - name: Remove {{ remote_output_directory }} if exists - ANSIBLE
-      ansible.builtin.file:
-        path: "{{ remote_output_directory }}"
-        state: absent
-  rescue:
-    - name: Remove {{ remote_output_directory }} if exists - {{ db_owner }}
-      become: yes
-      become_user: "{{ db_owner }}"
-      ansible.builtin.file:
-        path: "{{ remote_output_directory }}"
-        state: absent
+# Removes the per-database staging directories left by an earlier run (oracle_common_remote_script_directory,
+# oracle_common_remote_output_directory; aliases remote_script_directory / remote_output_directory).
+# roles/oracle_common/tasks/remove_staging.yml tries the connection user, then db_owner, and reports a
+# directory neither can remove as a WARNING (the original ignored every error here).
+- name: Remove the staging directories of an earlier run
+  ansible.builtin.include_role:
+    name: oracle_common
+    tasks_from: remove_staging
+  vars:
+    oracle_common_remove_path: "{{ initialization_role_staging_dir }}"
+  loop:
+    - "{{ oracle_common_remote_script_directory }}"
+    - "{{ oracle_common_remote_output_directory }}"
+  loop_control:
+    loop_var: initialization_role_staging_dir

@@ -1,0 +1,254 @@
+---
+# Inputs of this role. Shared defaults and per-OS values come from roles/oracle_common, which must
+# run first; derived paths are in ../defaults/main.yml.
+argument_specs:
+  main:
+    short_description: Download, install and patch Oracle Database software (software-only install).
+    description:
+      - Downloads the binaries for database_version from
+        <oracle_common_artifactory_url>/<oracle_database_install_role_artf_ver>, checks the per-OS prerequisite packages,
+        installs them into oracle_database_install_role_oracle_home (default
+        <mountpoint>/<db_owner>/product/<database_version>), runs root.sh through the root wrapper or directly through
+        become (oracle_common_root_script_method) and verifies it, then applies the patch bundle
+        oracle_database_install_role_patch_file_name.
+      - The installer and the patch run each run in the background for at most oracle_database_install_role_install_timeout /
+        oracle_database_install_role_patch_timeout seconds, polled every oracle_database_install_role_poll_interval seconds
+        for that whole limit; a failure shows their output and the last lines in the error message.
+      - Safe on a clean target and next to existing Oracle software (side-by-side). tasks/preflight.yml refuses an
+        existing non-empty ORACLE_HOME and a different existing environment file unless forced; the central inventory
+        pointer (oraInst.loc) is reused when present and created only when absent, never rewritten.
+      - Derived paths, overridable (templates of the inputs, so not listed as options) - oracle_database_install_role_oracle_base
+        (<mountpoint>/<db_owner>), oracle_database_install_role_oracle_home (alias oracle_home;
+        <oracle_database_install_role_oracle_base>/product/<database_version>),
+        oracle_database_install_role_install_folder_name (alias install_folder_name;
+        <oracle_database_install_role_patch_folder_prefix>/software/<DATABASE_NAME>_<database_version>, per database; the prefix
+        has the alias patch_folder_prefix and defaults to oracle_common_site_prefix) and
+        oracle_database_install_role_new_inventory_location (<oracle_database_install_role_oracle_base>/oraInventory).
+      - Artifact names, overridable - oracle_database_install_role_artf_ver (alias artf_ver;
+        oracle_common_artifactory_version_map[database_version]),
+        oracle_database_install_role_artifactory_repo (alias artifactory_repo), oracle_database_install_role_install_file_name
+        (alias install_file_name; <AIX|LINUX>_binaries.tar.gz) and oracle_database_install_role_patch_file_name (alias patch_file_name;
+        oracle_common_patch_file_name or its date-derived fallback).
+    options: &oracle_database_install_role_main_options
+      DATABASE_NAME:
+        type: str
+        required: true
+        description: ORACLE_SID.
+      db_owner:
+        type: str
+        required: true
+        description: OS user that owns the Oracle software.
+      database_version:
+        type: str
+        required: true
+        description: Oracle release; one of the keys of oracle_common_artifactory_version_map.
+      mountpoint:
+        type: str
+        required: true
+        description: Absolute base filesystem; ORACLE_BASE is <mountpoint>/<db_owner>.
+      oracle_common_artifactory_url:
+        type: str
+        required: true
+        description: Repository URL holding one sub-folder per Oracle release.
+      oracle_common_site_prefix:
+        type: str
+        required: true
+        description: Site directory for <DB>.env files and software staging.
+      oracle_common_root_wrapper_path:
+        type: str
+        description: Privileged wrapper that runs root.sh / rootpre.sh; required while oracle_common_root_script_method is wrapper.
+      oracle_common_root_script_method:
+        type: str
+        choices: [wrapper, become]
+        description:
+          - wrapper (default, alias oracle_root_script_method) drives the site root wrapper with expect; become runs root.sh
+            (AIX also clone/rootpre.sh) directly as oracle_common_root_script_become_user. Both verify success (from oracle_common).
+      oracle_database_install_role_ignore_prereqs:
+        type: bool
+        description:
+          - Continue although prerequisite packages are missing, and pass -ignorePrereq to the installer (default false; the
+            missing packages fail the run before anything changes). Defaults to oracle_ignore_prereqs, a short alias.
+      oracle_ignore_prereqs:
+        type: bool
+        description: Short alias of oracle_database_install_role_ignore_prereqs.
+      oracle_database_install_role_install_edition:
+        type: str
+        description: oracle.install.db.InstallEdition (default EE).
+      oracle_database_install_role_install_option:
+        type: str
+        description: oracle.install.option (default INSTALL_DB_SWONLY).
+      oracle_database_install_role_os_group:
+        type: str
+        description: Group for UNIX_GROUP_NAME and every OS*_GROUP key. Empty (default) uses the primary group of db_owner.
+      oracle_database_install_role_response_file:
+        type: str
+        description: Response file path on the target. Empty (default) uses <ORACLE_HOME>/responseFile.rsp.
+      oracle_database_install_role_response_extra_file:
+        type: str
+        description: Optional file on the target with extra key=value lines appended to the generated response file.
+      oracle_database_install_role_root_script_mode:
+        type: str
+        description: AIX - mode of clone/root.sh, the rootpre.sh copy run by the root wrapper (default 0755; no group/world write).
+      oracle_common_privileged_user:
+        type: str
+        description: Privileged account used through become (default b_user, else root; from oracle_common).
+      b_user:
+        type: str
+        description: Original name of oracle_common_privileged_user, still accepted.
+      oracle_common_artifactory_username:
+        type: str
+        description: Optional repository user (secret).
+      oracle_common_artifactory_password:
+        type: str
+        no_log: true
+        description: Optional repository password or token (secret).
+      oracle_common_patch_file_name:
+        type: str
+        description: Pinned patch bundle file name; empty falls back to the date-derived name.
+      oracle_database_install_role_force_reinstall:
+        type: bool
+        description:
+          - Install over an existing, non-empty ORACLE_HOME (default false; such a home is refused).
+          - Defaults to oracle_force_reinstall, which is accepted as a short alias.
+      oracle_force_reinstall:
+        type: bool
+        description: Short alias of oracle_database_install_role_force_reinstall.
+      oracle_database_install_role_force_env_file:
+        type: bool
+        description: Replace an existing environment file whose content differs (defaults to the reinstall flag).
+      oracle_database_install_role_env_file_backup:
+        type: bool
+        description:
+          - Keep a timestamped backup (<DB>.env.<pid>.<date>~, owner, group and mode preserved) of an existing environment
+            file before a forced replacement overwrites it (default true). Rollback never removes the backup.
+      oracle_database_install_role_inventory_location:
+        type: str
+        description:
+          - Central inventory to use. Empty (default) reuses the inventory named by an existing oraInst.loc, or creates
+            oracle_database_install_role_new_inventory_location on a clean target. When set and oraInst.loc names another
+            inventory, the run fails (oraInst.loc is never rewritten).
+      oracle_database_install_role_inventory_group:
+        type: str
+        description:
+          - inst_group for a new oraInst.loc. Empty (default) uses the primary group of db_owner. With an existing
+            oraInst.loc its inst_group is used, and a different non-empty value fails the run.
+      oracle_database_install_role_force_inventory_pointer:
+        type: bool
+        description:
+          - Rewrite an existing oraInst.loc that names another inventory_loc / inst_group than requested (the original
+            behaviour; default false). The previous content is backed up next to it and restored if the install fails.
+            It can orphan homes registered in the old inventory and does not follow oracle_database_install_role_force_reinstall.
+      oracle_database_install_role_inventory_pointer_mode:
+        type: str
+        description: Mode of a newly created oraInst.loc (default 0644).
+      oracle_database_install_role_inventory_dir_mode:
+        type: str
+        description: Mode of a newly created central inventory directory (default 0770).
+      oracle_database_install_role_env_file_mode:
+        type: str
+        description: Mode of the environment file (default 0755).
+      oracle_database_install_role_env_path_include_cwd:
+        type: bool
+        description: End PATH in the environment file with "." as the original did (default false, a security risk).
+      oracle_database_install_role_env_tns_admin:
+        type: str
+        description:
+          - TNS_ADMIN written to the environment file (default $ORACLE_BASE/admin/network/admin, the original). An absolute
+            path, or one starting with $ORACLE_BASE/ or $ORACLE_HOME/, without whitespace or shell metacharacters.
+      oracle_database_install_role_env_path_dirs:
+        type: list
+        elements: str
+        description:
+          - System directories at the start of PATH in the environment file, before $ORACLE_HOME/bin and $ORACLE_HOME/OPatch
+            (default the original list /usr/bin, /usr/ccs/bin, /bin, /etc, /usr/openwin/bin, /usr/local/bin, /usr/bin,
+            /usr/ucb). Each entry is an absolute path without whitespace or shell metacharacters.
+      oracle_database_install_role_env_nls_lang:
+        type: str
+        description: NLS_LANG written to the environment file (default american_america.AL32UTF8). No spaces or shell metacharacters.
+      oracle_database_install_role_env_nls_timestamp_format:
+        type: str
+        description:
+          - NLS_TIMESTAMP_FORMAT written to the environment file (default YYYY-MM-DD-HH24.MI.SS.FF6). No quotes, $, backquotes,
+            backslashes or line breaks.
+      oracle_database_install_role_env_nls_date_format:
+        type: str
+        description:
+          - NLS_DATE_FORMAT written to the environment file (default YYYY-MM-DD-HH24.MI.SS). No quotes, $, backquotes,
+            backslashes or line breaks.
+      oracle_database_install_role_home_mode:
+        type: str
+        description: Mode of the ORACLE_HOME directory at creation and after extraction (default 0755).
+      oracle_database_install_role_download_dir_mode:
+        type: str
+        description: Mode of install_folder_name, owned by db_owner and its primary group (default 0750).
+      oracle_database_install_role_download_parent_mode:
+        type: str
+        description: Mode of the shared parent of install_folder_name when this run creates it (default 0755).
+      oracle_database_install_role_download_file_mode:
+        type: str
+        description: Mode of the downloaded artifacts and the copied binaries archive (default 0640).
+      oracle_database_install_role_extracted_mode:
+        type: str
+        description:
+          - Mode applied recursively to the extracted patch tree (default u+rwX,g+rX,g-w,o-rwx, keeps executable bits).
+            Modes that give group or others write access are rejected.
+      oracle_database_install_role_patch_inner_archive_patterns:
+        type: list
+        elements: str
+        description:
+          - File-name globs of the archives inside the patch bundle that are extracted and then removed (default *.zip and
+            *.tar.gz, the original). Plain globs without a /. An empty list skips this step.
+      oracle_common_artifact_checksums:
+        type: dict
+        description:
+          - Expected checksum per artifact file name (from oracle_common), <algorithm>:<hex digest of exactly the
+            algorithm's length, not all zeros> or <algorithm>:<http(s) URL of a checksum file>, where <algorithm> is
+            one of md5, sha1, sha224, sha256, sha384 or sha512 (lowercase) in both forms.
+      oracle_common_artifact_checksum_required:
+        type: bool
+        description: Require a checksum for every artifact (default true, from oracle_common).
+      oracle_database_install_role_rollback_on_failure:
+        type: bool
+        description:
+          - After a failed install, remove what this run created (default true). Pre-existing homes, inventories and
+            environment files are never removed.
+      oracle_database_install_role_install_timeout:
+        type: int
+        description: Seconds database_install.bash (runInstaller) may run before it is stopped and fails (default 4000, as on main).
+      oracle_database_install_role_patch_timeout:
+        type: int
+        description: Seconds database_patch.bash (OPatch) may run before it is stopped and fails (default 4000, as on main).
+      oracle_database_install_role_poll_interval:
+        type: int
+        description: Seconds between status checks of the installer and the patch run (default 30, as on main).
+  preflight:
+    short_description: Read-only production-host safety checks (ORACLE_HOME, central inventory, environment file, packages).
+    description:
+      - Fails before anything changes when ORACLE_HOME exists and is not empty, or the environment file exists with other
+        content, unless forced. Works out the central inventory to reuse (side-by-side) or create (clean target).
+      - Fails when prerequisite packages from the per-OS list are missing, unless oracle_ignore_prereqs is true.
+      - Sets the facts oracle_database_install_role_safety and oracle_database_install_role_created.
+    options: *oracle_database_install_role_main_options
+  rollback:
+    short_description: Remove what a failed run created (called from the playbook's install rescue).
+    description:
+      - Uses oracle_database_install_role_created. A home registered in a pre-existing inventory is detached first, or kept.
+    options:
+      oracle_database_install_role_rollback_on_failure:
+        type: bool
+        description: Set false to keep everything for troubleshooting.
+  clean_files_from_server:
+    short_description: Remove the per-database software staging directory and the staged scripts.
+    options:
+      DATABASE_NAME:
+        type: str
+        required: true
+        description: ORACLE_SID; part of the staging directory names.
+      db_owner:
+        type: str
+        required: true
+        description: OS user that owns the staged scripts.
+      database_version:
+        type: str
+        required: true
+        description: Oracle release; part of the staging directory <site prefix>/software/<DATABASE_NAME>_<database_version>.

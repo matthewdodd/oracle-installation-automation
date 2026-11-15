@@ -1,0 +1,101 @@
+---
+# Runs one Oracle root script as root and verifies that it succeeded (finding C4).
+# Include variables:
+#   __oracle_database_install_role_root_script_dir            directory holding the script
+#   __oracle_database_install_role_root_script_name           script run by the become method (root.sh, rootpre.sh)
+#   __oracle_database_install_role_root_script_success_regex  output that must appear (empty: not checked)
+# Method (oracle_common_root_script_method, alias oracle_root_script_method):
+#   wrapper  (default, the original flow) oracle_common_privileged_user runs the site root wrapper; files/root_wrapper.exp answers
+#            its menu with the directory and fails on a timeout, on the wrapper ending early and on an
+#            unexpected prompt. The wrapper always runs <dir>/root.sh (tasks/rootpre.yml copies rootpre.sh there).
+#   become   <dir>/<script> runs directly through become as oracle_common_root_script_become_user (root),
+#            e.g. on cloud hosts without the wrapper.
+# Both: the exit status must be 0, the output must not match oracle_common_root_script_failure_regex and,
+# when set, must match the success regex. The output is shown before the check.
+
+- name: Run {{ __oracle_database_install_role_root_script_name ~ ' through the root wrapper' }}
+  when: oracle_common_root_script_method == 'wrapper'
+  become: true
+  become_user: "{{ oracle_common_privileged_user }}"
+  ansible.builtin.command:
+    # Static expect script (no Jinja in it); values come from the environment below.
+    argv:
+      - "{{ oracle_common_expect_path }}"
+      - "-c"
+      - "{{ lookup('ansible.builtin.file', 'root_wrapper.exp') }}"
+  environment: >-
+    {{ {'ORACLE_ROOT_WRAPPER': oracle_common_root_wrapper_path,
+        'ORACLE_ROOT_WRAPPER_TIMEOUT': oracle_common_root_wrapper_timeout | int | string,
+        'ORACLE_ROOT_SCRIPT_DIR': __oracle_database_install_role_root_script_dir,
+        'ORACLE_ROOT_WRAPPER_ACCEPT_RE': oracle_common_root_wrapper_accept_default_regex | default('', true),
+        'ORACLE_ROOT_WRAPPER_CHECK_EXIT': 'true' if (oracle_common_root_wrapper_check_exit_status | bool) else 'false'}
+       | combine({'ROOTPRE_DIR': __oracle_database_install_role_root_script_dir}
+                 if __oracle_database_install_role_root_script_name == 'rootpre.sh' else {}) }}
+  register: oracle_database_install_role_root_wrapper_result
+  changed_when: true
+  failed_when: false
+
+- name: Run {{ __oracle_database_install_role_root_script_name ~ ' directly as ' ~ oracle_common_root_script_become_user }}
+  when: oracle_common_root_script_method == 'become'
+  become: true
+  become_user: "{{ oracle_common_root_script_become_user }}"
+  ansible.builtin.command:
+    argv: >-
+      {{ [__oracle_database_install_role_root_script_dir ~ '/' ~ __oracle_database_install_role_root_script_name]
+         + (oracle_common_root_script_args | map('string') | list) }}
+    chdir: "{{ __oracle_database_install_role_root_script_dir }}"
+    stdin: "{{ oracle_common_root_script_stdin }}"
+  register: oracle_database_install_role_root_become_result
+  changed_when: true
+  failed_when: false
+
+- name: Keep the result of {{ __oracle_database_install_role_root_script_name }}
+  ansible.builtin.set_fact:
+    oracle_database_install_role_root_script_result: >-
+      {{ oracle_database_install_role_root_wrapper_result if oracle_common_root_script_method == 'wrapper'
+         else oracle_database_install_role_root_become_result }}
+
+- name: Show the output of {{ __oracle_database_install_role_root_script_name }}
+  ansible.builtin.debug:
+    var: oracle_database_install_role_root_script_result.stdout_lines
+
+- name: Check that {{ __oracle_database_install_role_root_script_name ~ ' succeeded' }}
+  when: not ansible_check_mode
+  ansible.builtin.assert:
+    that:
+      - __oracle_database_install_role_root_rc == 0
+      - not (__oracle_database_install_role_root_failure_hit | bool)
+      - not (__oracle_database_install_role_root_success_missing | bool)
+    fail_msg: >-
+      {{ __oracle_database_install_role_root_script_name }} in {{ __oracle_database_install_role_root_script_dir }} did not
+      succeed ({{ oracle_common_root_script_method }} method, rc={{ __oracle_database_install_role_root_rc }}
+      {{- (': ' ~ __oracle_database_install_role_root_wrapper_codes[__oracle_database_install_role_root_rc])
+          if oracle_common_root_script_method == 'wrapper'
+             and __oracle_database_install_role_root_rc in __oracle_database_install_role_root_wrapper_codes else '' }}
+      {{- (': ' ~ oracle_database_install_role_root_script_result.msg)
+          if __oracle_database_install_role_root_rc == -1 and oracle_database_install_role_root_script_result.msg is defined else '' }}).
+      {{ ('Output matches the failure pattern ' ~ __oracle_database_install_role_root_failure_re ~ '. ')
+         if __oracle_database_install_role_root_failure_hit | bool else '' -}}
+      {{ ('Output lacks the success pattern ' ~ __oracle_database_install_role_root_success_re ~ '. ')
+         if __oracle_database_install_role_root_success_missing | bool else '' -}}
+      See the output above. ORACLE_HOME is left for the install rescue (rollback).
+    quiet: true
+  vars:
+    __oracle_database_install_role_root_rc: "{{ oracle_database_install_role_root_script_result.rc | default(-1) | int }}"
+    __oracle_database_install_role_root_output: >-
+      {{ [oracle_database_install_role_root_script_result.stdout | default(''),
+          oracle_database_install_role_root_script_result.stderr | default('')] | join(' ') }}
+    __oracle_database_install_role_root_failure_re: "{{ oracle_common_root_script_failure_regex | default('', true) }}"
+    __oracle_database_install_role_root_success_re: "{{ __oracle_database_install_role_root_script_success_regex | default('', true) }}"
+    __oracle_database_install_role_root_failure_hit: >-
+      {{ __oracle_database_install_role_root_failure_re | length > 0
+         and __oracle_database_install_role_root_output is search(__oracle_database_install_role_root_failure_re) }}
+    __oracle_database_install_role_root_success_missing: >-
+      {{ __oracle_database_install_role_root_success_re | length > 0
+         and __oracle_database_install_role_root_output is not search(__oracle_database_install_role_root_success_re) }}
+    __oracle_database_install_role_root_wrapper_codes:
+      1: invalid wrapper environment
+      2: timed out waiting for a wrapper prompt
+      3: the wrapper ended before the dialogue completed
+      4: unexpected prompt or question
+      5: the wrapper exited non-zero

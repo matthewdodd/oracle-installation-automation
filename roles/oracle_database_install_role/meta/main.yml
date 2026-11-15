@@ -1,0 +1,34 @@
+---
+# Role metadata. Inputs are documented and validated in meta/argument_specs.yml.
+galaxy_info:
+  role_name: oracle_database_install_role
+  author: Oracle installation automation maintainers
+  description: >-
+    Downloads, verifies, installs (software-only) and patches Oracle Database binaries on a clean
+    host or side by side with existing Oracle software, without overwriting an existing ORACLE_HOME,
+    central inventory or environment file unless forced; rolls back what a failed run created.
+  # SPDX identifier. See LICENSE and NOTICE (Oracle and Red Hat/IBM software are not covered).
+  license: GPL-3.0-or-later
+  # Same floor as the pinned controller toolchain in requirements.txt (ansible-core 2.22.0).
+  min_ansible_version: "2.22"
+  # Platforms with a vars file in roles/oracle_common/vars/ (selected from facts at run time).
+  # EL covers RHEL and its rebuilds (Oracle Linux, Rocky, AlmaLinux: os_family RedHat), which share
+  # RedHat-<major>.yml. AIX 7.3 uses the same AIX.yml as 7.2; the Galaxy schema does not list 7.3 yet.
+  # EL7 is not supported: roles/oracle_common/tasks/os_vars.yml refuses Red Hat family releases before 8.
+  platforms:
+    - name: EL
+      versions:
+        - "8"
+        - "9"
+    - name: AIX
+      versions:
+        - "7.2"
+  galaxy_tags:
+    - oracle
+    - database
+    - aix
+    - rhel
+
+# oracle_common must run first (the playbook imports it). It is not a meta dependency, so it runs
+# once per play and is not repeated by every role that needs it.
+dependencies: []

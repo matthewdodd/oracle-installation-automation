@@ -1,0 +1,5 @@
+---
+# Loaded by tests/tasks/platform_case.yml before each platform case, at the same precedence as the role's
+# include_vars, so os_vars.yml can still override it. The sentinel is not a real package: an accepted case
+# that loaded no OS file (or kept the list of the previous case) cannot match its expected release file.
+__oracle_common_prereq_packages: [__platform_case_not_loaded__]

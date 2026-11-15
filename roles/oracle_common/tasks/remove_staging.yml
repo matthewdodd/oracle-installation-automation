@@ -1,0 +1,29 @@
+---
+# Removes one staging path (include variable oracle_common_remove_path) the way the original did: first as
+# the connection user and, when that fails, as db_owner. Shared by initialization_role (init clean) and
+# oracle_database_install_role (cleanup).
+# Best effort, as on main (which used ignore_errors): a path neither account can remove is reported as a
+# WARNING with the error instead of being silently ignored, and the run continues. initialization_role
+# recreates the staging directories and verifies them (owned by db_owner, not group/world-writable), so a
+# leftover foreign directory still stops the run there.
+- name: Remove the staging path {{ oracle_common_remove_path }}
+  block:
+    - name: Remove the staging path as the connection user {{ oracle_common_remove_path }}
+      ansible.builtin.file:
+        path: "{{ oracle_common_remove_path }}"
+        state: absent
+  rescue:
+    - name: Retry as db_owner {{ oracle_common_remove_path }}
+      block:
+        - name: Remove the staging path as db_owner {{ oracle_common_remove_path }}
+          become: true
+          become_user: "{{ db_owner }}"
+          ansible.builtin.file:
+            path: "{{ oracle_common_remove_path }}"
+            state: absent
+      rescue:
+        - name: Report the staging path that could not be removed {{ oracle_common_remove_path }}
+          ansible.builtin.debug:
+            msg: >-
+              WARNING: could not remove {{ oracle_common_remove_path }} as the connection user or as {{ db_owner }}
+              ({{ ansible_failed_task.name | default('unknown task') }}: {{ ansible_failed_result.msg | default('no message') }}).

@@ -1,0 +1,147 @@
+---
+# End-to-end test of oracle_database_install.yml in RHEL-compatible containers, with stub Oracle software
+# (resolution plan steps 24-25, finding R3). Nothing here is Oracle software and no real host is touched.
+#
+#   el8-clean  Rocky Linux 8  clean target; root scripts through a stub site root wrapper (wrapper method)
+#   el9-clean  AlmaLinux 9    clean target; root scripts through become (cloud-style host, no wrapper)
+#   el9-sbs    AlmaLinux 9    side-by-side: another Oracle home, central inventory (/etc/oraInst.loc) and
+#                             another database's environment file already exist (seeded by prepare.yml)
+#
+# prepare.yml installs the real per-OS prerequisite package list (roles/oracle_common/vars/RedHat-<major>.yml),
+# creates the OS users and groups, builds the fake artifact repository (files/build_artifacts.bash: tarballs
+# with stub runInstaller, root.sh and opatch) and serves it over HTTP on 127.0.0.1 inside each container.
+# converge.yml runs the unmodified playbook. verify.yml checks the result, the guards, and that a second
+# converge changes nothing (see the test_sequence note below).
+#
+# Run from the repository root:
+#   pip install -r requirements-test.txt
+#   molecule test                     # full sequence
+#   molecule converge && molecule verify && molecule destroy
+dependency:
+  # Installs collections.yml from this directory (community.docker for the driver, ansible.posix for its
+  # create playbook). Nothing else installs them: the CI workflow only installs requirements-test.txt.
+  # A shell step and not the galaxy one, because the galaxy dependency always runs a roles install as well
+  # and reports it as missing when there is no roles requirements.yml (this scenario needs no roles).
+  name: shell
+  command: ansible-galaxy collection install --requirements-file "${MOLECULE_SCENARIO_DIRECTORY}/collections.yml"
+
+driver:
+  name: docker
+
+platforms:
+  - name: el8-clean
+    image: docker.io/rockylinux/rockylinux:8.10
+    pre_build_image: false
+    groups: [molecule_oracle, clean_target]
+  - name: el9-clean
+    image: docker.io/library/almalinux:9.6
+    pre_build_image: false
+    groups: [molecule_oracle, clean_target]
+  - name: el9-sbs
+    image: docker.io/library/almalinux:9.6
+    pre_build_image: false
+    groups: [molecule_oracle, side_by_side]
+
+ansible:
+  cfg:
+    defaults:
+      # The repository's roles (Molecule writes its own ansible.cfg, so the repository ansible.cfg is not read).
+      roles_path: ${MOLECULE_PROJECT_DIRECTORY}/roles
+      stdout_callback: ansible.builtin.default
+      callback_result_format: yaml
+
+provisioner:
+  name: ansible
+  inventory:
+    group_vars:
+      molecule_oracle:
+        # --- Job inputs (the AAP survey names) ------------------------------------------------------
+        # target is set by converge.yml (all hosts of molecule_oracle).
+        DATABASE_NAME: MOLDB
+        db_owner: oracle
+        database_version: "19.0.0.0"
+        mountpoint: /u01
+
+        # --- Environment inputs (test values; real ones live in inventory/<env>/) ---------------------
+        oracle_common_site_prefix: /local
+        # The stub repository inside each container (prepare.yml). Plain http on the loopback interface
+        # only; the preflight shows its "plain http" warning. Integrity still comes from the checksums.
+        oracle_common_artifactory_url: "http://127.0.0.1:{{ molecule_repository_port }}/oracledatabase"
+        oracle_common_patch_file_name: LINUX_molecule.tar.gz
+        # Checksums are required by default and stay required: the digests are published next to the
+        # artifacts by build_artifacts.bash and get_url verifies against them (sha256:<URL> form).
+        oracle_common_artifact_checksums:
+          LINUX_binaries.tar.gz: "sha256:{{ molecule_repository_release_url }}/LINUX_binaries.tar.gz.sha256"
+          LINUX_molecule.tar.gz: "sha256:{{ molecule_repository_release_url }}/LINUX_molecule.tar.gz.sha256"
+        # Shorter status polling than the production default (30 s); the stub installer is instant.
+        oracle_database_install_role_poll_interval: 5
+
+        # --- Test fixture settings (molecule_*; used by prepare.yml and verify.yml only) -------------
+        molecule_repository_port: 8080
+        molecule_repository_dir: /srv/oracle-artifacts
+        molecule_repository_release_url: "http://127.0.0.1:{{ molecule_repository_port }}/oracledatabase/19.0.0"
+        molecule_db_ru_id: "99000001"
+        molecule_ojvm_id: "99000002"
+        molecule_old_opatch_version: 12.2.0.1.17
+        molecule_new_opatch_version: 12.2.0.1.44
+        molecule_oracle_uid: 54321
+        molecule_oinstall_gid: 54321
+        molecule_dba_gid: 54322
+        # What verify.yml expects on a clean target.
+        molecule_expected_oracle_home: /u01/oracle/product/19.0.0.0
+        molecule_expected_inventory: /u01/oracle/oraInventory
+        molecule_expected_inventory_group: oinstall
+        # OS group db_owner and the privileged user join (created by prepare.yml).
+        molecule_automation_group: oraauto
+      clean_target:
+        oracle_common_group_name: oraauto
+        # No root wrapper in the container: root.sh runs directly through become (el8-clean overrides this).
+        oracle_common_root_script_method: become
+      side_by_side:
+        # The default home path /u01/oracle/product/19.0.0.0 is taken by the existing installation, so the
+        # new home gets its own path through the original input name oracle_home (alias).
+        oracle_home: /u01/oracle/product/19.0.0.0_2
+        # Existing installation seeded by prepare.yml (never modified by the playbook).
+        molecule_existing_oracle_home: /u01/oracle/product/19.0.0.0
+        molecule_existing_inventory: /u01/app/oraInventory
+        molecule_existing_database: OTHERDB
+    host_vars:
+      el8-clean:
+        ansible_python_interpreter: /usr/bin/python3.11
+        # Original flow: the root scripts run through the site root wrapper (a stub, installed by prepare.yml).
+        oracle_common_root_script_method: wrapper
+        oracle_common_root_wrapper_path: /usr/local/bin/root-wrapper
+        oracle_common_root_wrapper_timeout: 60
+      el9-clean:
+        ansible_python_interpreter: /usr/bin/python3
+      el9-sbs:
+        ansible_python_interpreter: /usr/bin/python3
+        # The original variable name for the automation group keeps working (alias of oracle_common_group_name).
+        GROUP_NAME: oraauto
+        # And the short alias of oracle_common_root_script_method.
+        oracle_root_script_method: become
+        # What verify.yml expects here (host vars, so they win over the molecule_oracle group values).
+        molecule_expected_oracle_home: /u01/oracle/product/19.0.0.0_2
+        molecule_expected_inventory: /u01/app/oraInventory
+
+verifier:
+  name: ansible
+
+scenario:
+  name: default
+  # Molecule's built-in idempotence step is replaced by verify.yml's own second converge. The playbook
+  # deliberately refuses to install over the non-empty ORACLE_HOME it created (the production-host guard),
+  # so a second run fails by design and the built-in step (which needs a successful run with changed=0)
+  # cannot pass. verify.yml instead reruns converge.yml and asserts that it is refused by that guard with
+  # changed=0 and that nothing on the hosts changed (file contents, modes, owners and timestamps).
+  # There is no cleanup step: the scenario changes nothing outside its containers (the artifact repository
+  # runs inside each container), so destroy removes everything it created.
+  test_sequence:
+    - dependency
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - verify
+    - destroy

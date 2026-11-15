@@ -1,1 +1,146 @@
-#ansible_ssh_user: 
+---
+# Install layout and artifact selection. Shared inputs (DATABASE_NAME, db_owner, database_version,
+# mountpoint, b_user, staging directories, site prefix, repository URL and credentials, root
+# wrapper, patch file name) and per-OS values are defined once in roles/oracle_common.
+# Run oracle_common before this role. Every value below can be overridden.
+
+# Install layout
+# ORACLE_BASE written to the environment file (original layout: <mountpoint>/<db_owner>).
+oracle_database_install_role_oracle_base: "{{ mountpoint }}/{{ db_owner }}"
+# ORACLE_HOME. The default keeps the original layout <mountpoint>/<db_owner>/product/<database_version>.
+# Set a different path for a side-by-side install of a release that is already installed on the
+# host, e.g. /u01/oracle/product/19.0.0.0_2. The original name oracle_home is accepted as an alias.
+oracle_database_install_role_oracle_home: >-
+  {{ oracle_home | default(oracle_database_install_role_oracle_base ~ '/product/' ~ database_version) }}
+# Base of the software staging directory (alias patch_folder_prefix).
+oracle_database_install_role_patch_folder_prefix: "{{ patch_folder_prefix | default(oracle_common_site_prefix) }}"
+# Per-database software staging directory (alias install_folder_name). Cleanup removes only this
+# directory, so runs for other databases (even of the same release) never lose their files.
+oracle_database_install_role_install_folder_name: >-
+  {{ install_folder_name | default(oracle_database_install_role_patch_folder_prefix ~ '/software/' ~ DATABASE_NAME ~ '_' ~ database_version) }}
+
+# --- Production-host safety (clean target or side-by-side next to existing Oracle software) ---
+# An existing, non-empty ORACLE_HOME is never installed over unless this is true. The short
+# name oracle_force_reinstall (e.g. an AAP survey variable) is accepted as an alias.
+oracle_database_install_role_force_reinstall: "{{ oracle_force_reinstall | default(false) }}"
+# An existing environment file (oracle_common_env_file) whose content differs from the one this
+# run would write is never replaced unless this is true. Follows the reinstall flag by default.
+oracle_database_install_role_force_env_file: "{{ oracle_database_install_role_force_reinstall }}"
+# When a forced replacement (above) overwrites an existing environment file with different content, its
+# previous content is first kept in a timestamped backup next to it (<DB>.env.<pid>.<date>~, owner, group
+# and mode preserved), the same way a forced oraInst.loc rewrite keeps one. Rollback never removes it.
+# Secure default: true. Set false to overwrite without a backup.
+oracle_database_install_role_env_file_backup: true
+# Central inventory. When the pointer file (oracle_common_inventory_pointer_file, /etc/oraInst.loc)
+# exists, its inventory_loc and inst_group are reused and the file is never modified.
+# When it is absent (clean target), it is created from the values below.
+#   Empty: reuse the existing inventory, or create oracle_database_install_role_new_inventory_location.
+#   Set:   the inventory that must be used; the run fails if an existing pointer names another one.
+oracle_database_install_role_inventory_location: ""
+# Inventory created on a clean target (original layout: <mountpoint>/<db_owner>/oraInventory).
+oracle_database_install_role_new_inventory_location: "{{ oracle_database_install_role_oracle_base }}/oraInventory"
+# inst_group for a new pointer file. Empty: the primary group of db_owner (the original behaviour).
+# With an existing pointer, its inst_group is used; a different non-empty value fails the run.
+oracle_database_install_role_inventory_group: ""
+# Opt-in for the original behaviour of rewriting an existing pointer file: when true and the existing
+# pointer names another inventory_loc / inst_group than requested (oracle_database_install_role_inventory_location,
+# else oracle_database_install_role_new_inventory_location; oracle_database_install_role_inventory_group, else the
+# primary group of db_owner), the pointer is rewritten. Its previous content is kept in a timestamped backup
+# next to it and is restored if the install fails. Rewriting the pointer can orphan the Oracle homes registered
+# in the old inventory, so this does NOT follow oracle_database_install_role_force_reinstall. Default false.
+oracle_database_install_role_force_inventory_pointer: false
+oracle_database_install_role_inventory_pointer_mode: "0644"
+oracle_database_install_role_inventory_dir_mode: "0770"
+# Mode of the environment file (the original ran chmod 0755 on it).
+oracle_database_install_role_env_file_mode: "0755"
+# The original environment file ended PATH with "." (current directory), which lets a file planted
+# in any working directory run instead of a system or Oracle binary. Secure default: left out.
+# Set true to keep the original PATH exactly.
+oracle_database_install_role_env_path_include_cwd: false
+# Site conventions written into the environment file. The defaults are the original values, so the
+# file is unchanged unless they are overridden. The file is sourced by a shell, so preflight only accepts
+# safe characters: TNS_ADMIN is an absolute path or $ORACLE_BASE/... / $ORACLE_HOME/...; each PATH entry
+# is an absolute directory (written before $ORACLE_HOME/bin and $ORACLE_HOME/OPatch); NLS_LANG has no
+# spaces (it is written unquoted, as before); the NLS formats have no quotes, $, backquotes or backslashes.
+oracle_database_install_role_env_tns_admin: "$ORACLE_BASE/admin/network/admin"
+oracle_database_install_role_env_path_dirs:
+  - /usr/bin
+  - /usr/ccs/bin
+  - /bin
+  - /etc
+  - /usr/openwin/bin
+  - /usr/local/bin
+  - /usr/bin
+  - /usr/ucb
+oracle_database_install_role_env_nls_lang: american_america.AL32UTF8
+oracle_database_install_role_env_nls_timestamp_format: "YYYY-MM-DD-HH24.MI.SS.FF6"
+oracle_database_install_role_env_nls_date_format: "YYYY-MM-DD-HH24.MI.SS"
+# After a failed install, remove what this run created: an ORACLE_HOME it created (or filled when
+# it was empty), and an environment file, inventory pointer or inventory directory it created.
+# Pre-existing homes, inventories and environment files are never removed.
+oracle_database_install_role_rollback_on_failure: true
+
+# --- Installer (database_install.bash; each value reaches the script through its environment) ---
+# Prerequisites. The per-OS package / fileset list (oracle_common_prereq_packages) is checked before
+# anything changes on the host, and missing packages fail the run with their names. True turns both
+# checks off knowingly: the missing packages are only reported, and -ignorePrereq is passed to the
+# installer (the original always passed it). The short name oracle_ignore_prereqs (e.g. an AAP survey
+# variable) is accepted as an alias.
+oracle_database_install_role_ignore_prereqs: "{{ oracle_ignore_prereqs | default(false) }}"
+# Response file values (unchanged defaults: Enterprise Edition, software-only install).
+oracle_database_install_role_install_edition: EE
+oracle_database_install_role_install_option: INSTALL_DB_SWONLY
+# Group for UNIX_GROUP_NAME and every OS*_GROUP key. Empty: the primary group of db_owner (original).
+oracle_database_install_role_os_group: ""
+# Response file path. Empty: <ORACLE_HOME>/responseFile.rsp (original).
+oracle_database_install_role_response_file: ""
+# Optional file on the target with extra key=value lines appended to the generated response file.
+oracle_database_install_role_response_extra_file: ""
+
+# --- Permissions (no group/world-writable modes are accepted; the original used 0777) ------
+# ORACLE_HOME directory (owner db_owner): mode at creation and after extraction (the original's final mode).
+oracle_database_install_role_home_mode: "0755"
+# Software staging directory install_folder_name and its download: owned by db_owner and its primary
+# group, so the installer and OPatch (running as db_owner) can read them and nobody else can change them.
+oracle_database_install_role_download_dir_mode: "0750"
+oracle_database_install_role_download_file_mode: "0640"
+# Parent of install_folder_name (<site prefix>/software), shared by all databases: created with this
+# mode only when missing (an existing directory is never changed).
+oracle_database_install_role_download_parent_mode: "0755"
+# Applied recursively to the extracted patch tree (owner db_owner): symbolic, so the executable bits
+# shipped in the patch archives (OPatch, scripts) are kept; group/others never get write access.
+oracle_database_install_role_extracted_mode: "u+rwX,g+rX,g-w,o-rwx"
+# File-name globs of the archives inside the patch bundle (top level of install_folder_name) that are
+# extracted and then removed, e.g. the RU and OJVM zips (original: *.zip and *.tar.gz). An empty list
+# skips this step.
+oracle_database_install_role_patch_inner_archive_patterns:
+  - "*.zip"
+  - "*.tar.gz"
+# AIX: mode of <ORACLE_HOME>/clone/root.sh, the copy of rootpre.sh the root wrapper runs (original 0755).
+oracle_database_install_role_root_script_mode: "0755"
+
+# --- Long-running steps (installer and patch run) -------------------------------------------
+# Hard limit in seconds for database_install.bash (runInstaller) and database_patch.bash (OPatch); the
+# step is stopped and fails when it runs longer (the original used async 4000 for both). The status is
+# checked every oracle_database_install_role_poll_interval seconds (original 30) for the whole limit plus
+# one interval, so polling never gives up while the step may still be running (the original stopped
+# polling after 120 x 30 = 3600 s, before the 4000 s limit).
+oracle_database_install_role_install_timeout: 4000
+oracle_database_install_role_patch_timeout: 4000
+oracle_database_install_role_poll_interval: 30
+
+# Artifact repository: <oracle_common_artifactory_url>/<artf_ver>/<file>.
+# database_version is validated against oracle_common_artifactory_version_map (no fallback).
+# The original names artf_ver, artifactory_repo, install_file_name and patch_file_name are accepted as aliases.
+oracle_database_install_role_artf_ver: >-
+  {{ artf_ver if artf_ver is defined else oracle_common_artifactory_version_map[database_version] }}
+oracle_database_install_role_artifactory_repo: >-
+  {{ artifactory_repo if artifactory_repo is defined
+     else (oracle_common_artifactory_url | regex_replace('/+$', '')) ~ '/' ~ oracle_database_install_role_artf_ver }}
+oracle_database_install_role_install_file_name: >-
+  {{ install_file_name | default(oracle_common_artifact_platform ~ '_binaries.tar.gz') }}
+# Pinned with oracle_common_patch_file_name; the date-derived name is only a documented fallback.
+oracle_database_install_role_patch_file_name: >-
+  {{ patch_file_name if patch_file_name is defined
+     else (oracle_common_patch_file_name if oracle_common_patch_file_name | length > 0
+           else oracle_common_patch_file_name_fallback) }}

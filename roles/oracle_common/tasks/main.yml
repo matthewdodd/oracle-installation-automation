@@ -1,0 +1,10 @@
+---
+# Entry point: load platform variables, then validate every input before anything changes on the host.
+# Run it once per play before initialization_role / oracle_database_install_role, e.g.
+#   - ansible.builtin.import_role:
+#       name: oracle_common
+- name: Load OS-specific variables
+  ansible.builtin.import_tasks: os_vars.yml
+
+- name: Validate inputs
+  ansible.builtin.import_tasks: preflight.yml

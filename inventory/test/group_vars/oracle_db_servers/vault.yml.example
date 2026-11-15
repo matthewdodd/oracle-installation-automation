@@ -1,0 +1,20 @@
+---
+# EXAMPLE ONLY for the test environment - fake values, not encrypted, not loaded by Ansible (the
+# .example extension is ignored). The vault_* names are already mapped in main.yml. To use it:
+#
+#   cp inventory/test/group_vars/oracle_db_servers/vault.yml.example inventory/test/group_vars/oracle_db_servers/vault.yml
+#   $EDITOR inventory/test/group_vars/oracle_db_servers/vault.yml        # real values
+#   ansible-vault encrypt --vault-id test@prompt inventory/test/group_vars/oracle_db_servers/vault.yml
+#   head -n 1 inventory/test/group_vars/oracle_db_servers/vault.yml      # must start with $ANSIBLE_VAULT;1.2;AES256;test
+#   ansible-vault edit --vault-id test@prompt inventory/test/group_vars/oracle_db_servers/vault.yml   # later changes
+#   ansible-playbook -i inventory/test/hosts.yml --vault-id test@prompt oracle_database_install.yml -e target=...
+#
+# Never commit an unencrypted vault.yml (CI rejects any committed vault file without the
+# $ANSIBLE_VAULT; header) or a vault password file (.gitignore excludes .vault_pass* / vault_pass*).
+# Use a test-only vault password, different from every other environment. Rotate with
+#   ansible-vault rekey --vault-id test@prompt --new-vault-id test@prompt inventory/test/group_vars/oracle_db_servers/vault.yml
+# AAP: create a Vault credential with Vault Identifier "test" and the test vault password, and attach it
+# to the test job template (no --vault-id option is needed there).
+vault_oracle_notification_webhook_url: https://example.invalid/workflows/FAKE-TEST-WEBHOOK-ID
+vault_oracle_artifactory_username: example-test-user
+vault_oracle_artifactory_password: example-not-a-real-password

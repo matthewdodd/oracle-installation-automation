@@ -1,0 +1,32 @@
+---
+# One oracle_common path case: run the real preflight with the case's mountpoint, site prefix and staging base,
+# then compare the rejected inputs with the expectation. Inputs the case does not name get a valid baseline value.
+- name: Run the oracle_common preflight ({{ path_validation_case.name }})
+  block:
+    # Set as facts so they win over the test vars files; reset to the baseline after the last case.
+    - name: Set the paths of this case
+      ansible.builtin.set_fact:
+        mountpoint: "{{ path_validation_case.paths.mountpoint | default(path_validation_baseline.mountpoint) }}"
+        oracle_common_site_prefix: "{{ path_validation_case.paths.oracle_common_site_prefix | default(path_validation_baseline.oracle_common_site_prefix) }}"
+        oracle_common_staging_base: "{{ path_validation_case.paths.oracle_common_staging_base | default(path_validation_baseline.oracle_common_staging_base) }}"
+
+    - name: Validate the inputs
+      ansible.builtin.include_role:
+        name: oracle_common
+        tasks_from: preflight
+  rescue:
+    - name: Note the expected validation failure
+      ansible.builtin.debug:
+        msg: "preflight rejected the inputs (checked below)"
+
+- name: Check the outcome ({{ path_validation_case.name }})
+  ansible.builtin.assert:
+    that: __path_validation_actual == (path_validation_case.rejected | sort)
+    fail_msg: "rejected {{ __path_validation_actual }} (expected {{ path_validation_case.rejected | sort }})"
+    quiet: true
+  vars:
+    __path_validation_names: [mountpoint, oracle_common_site_prefix, oracle_common_staging_base]
+    __path_validation_actual: >-
+      {{ __path_validation_names
+         | select('in', __oracle_common_preflight_errors | map('regex_search', '\A\S+') | list)
+         | sort }}

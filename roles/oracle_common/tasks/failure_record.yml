@@ -1,0 +1,13 @@
+---
+# Records why a stage of the playbook failed, for the failure notification and the final error message.
+# Call it first in a rescue section, before anything else can run (a rollback or a cleanup with its own
+# rescue would replace ansible_failed_task / ansible_failed_result). Include variable:
+#   oracle_common_failure_stage  name of the failed stage, e.g. Initialize, Install
+# ansible_failed_result.msg of a no_log task is already censored by Ansible.
+- name: Record the failure of stage {{ oracle_common_failure_stage | default('unknown') }}
+  ansible.builtin.set_fact:
+    oracle_common_failure:
+      stage: "{{ oracle_common_failure_stage | default('unknown') }}"
+      task: "{{ ansible_failed_task.name | default('unknown task') }}"
+      msg: >-
+        {{ ansible_failed_result.msg | default('no error message (see the task output above)') | string }}

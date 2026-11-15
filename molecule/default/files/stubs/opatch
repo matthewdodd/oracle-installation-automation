@@ -1,0 +1,67 @@
+#!/bin/bash
+#
+# TEST STUB - NOT ORACLE SOFTWARE. Molecule stand-in for <ORACLE_HOME>/OPatch/opatch. It is shipped in the
+# fake binaries (older OPATCH_VERSION) and in the fake patch bundle (newer OPATCH_VERSION), so
+# database_patch.bash's OPatch upgrade runs. Supported commands:
+#   opatch version                    print OPATCH_VERSION from version.txt next to this script
+#   opatch lspatches                  list the patches applied to this home (verify.yml reads it)
+#   opatch apply -silent <patch dir>  "apply" the numeric patch folder (needs README.html), record it in
+#                                     <ORACLE_HOME>/install/molecule_applied_patches; applying the same
+#                                     patch twice fails like OPatch does
+# Successful runs end with "OPatch succeeded.", the line database_patch.bash checks.
+set -u
+
+opatch_dir=$(cd "$(dirname "$0")" && pwd -P) || exit 1
+oracle_home=$(dirname "$opatch_dir")
+version=$(sed -n 's/^OPATCH_VERSION://p' "$opatch_dir/version.txt" 2>/dev/null | tr -d '[:space:]')
+registry=$oracle_home/install/molecule_applied_patches
+
+case "${1:-}" in
+  version)
+    echo "OPatch Version: $version"
+    echo ""
+    echo "OPatch succeeded."
+    ;;
+  lspatches)
+    if [[ -s "$registry" ]]; then
+      cat "$registry"
+    else
+      echo "There are no Interim patches installed in this Oracle Home."
+    fi
+    echo ""
+    echo "OPatch succeeded."
+    ;;
+  apply)
+    if [[ "$(id -u)" -eq 0 ]]; then
+      echo "OPatch must not be run as root (test stub)."
+      exit 1
+    fi
+    if [[ "${2:-}" != "-silent" || -z "${3:-}" ]]; then
+      echo "usage: opatch apply -silent <patch directory> (test stub)"
+      exit 1
+    fi
+    patch_dir=$3
+    if [[ ! -f "$patch_dir/README.html" ]]; then
+      echo "Patch location $patch_dir has no README.html (test stub)."
+      echo "OPatch stopped."
+      exit 1
+    fi
+    patch_id=$(basename "$patch_dir")
+    title=$(sed -n 's:.*<title>\(.*\)</title>.*:\1:p' "$patch_dir/README.html" | head -n 1)
+    mkdir -p "$oracle_home/install" || exit 1
+    if [[ -f "$registry" ]] && grep -q "^${patch_id};" "$registry"; then
+      echo "Patch $patch_id is already applied to $oracle_home (test stub)."
+      echo "OPatch stopped with error code 73."
+      exit 73
+    fi
+    echo "Applying patch $patch_id to $oracle_home (OPatch $version, test stub)"
+    printf '%s;%s\n' "$patch_id" "$title" >> "$registry"
+    echo "Patch $patch_id successfully applied."
+    echo ""
+    echo "OPatch succeeded."
+    ;;
+  *)
+    echo "usage: opatch version | lspatches | apply -silent <patch directory> (test stub)"
+    exit 1
+    ;;
+esac

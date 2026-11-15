@@ -1,0 +1,80 @@
+---
+# One oracle_database_install_role path case: run the real install-role preflight with the case's paths,
+# then compare the rejected inputs with the expectation. Inputs the case does not name get a valid
+# baseline value. The installer edition is always invalid (a sentinel), so the run stops at one of the
+# three input checks at the start of tasks/preflight.yml and never reaches a task that inspects the host;
+# the sentinel's own error is ignored below.
+- name: Run the install role preflight ({{ path_validation_case.name }})
+  block:
+    # An oracle_common input: set as a fact (it wins over the test vars files); reset after the last case.
+    - name: Set the central inventory pointer file of this case
+      ansible.builtin.set_fact:
+        oracle_common_inventory_pointer_file: >-
+          {{ path_validation_case.paths.oracle_common_inventory_pointer_file
+             | default(install_path_validation_baseline.oracle_common_inventory_pointer_file) }}
+
+    - name: Validate the inputs
+      ansible.builtin.include_role:
+        name: oracle_database_install_role
+        tasks_from: preflight
+      vars:
+        oracle_database_install_role_oracle_home: >-
+          {{ path_validation_case.paths.oracle_home
+             | default(install_path_validation_baseline.oracle_home) }}
+        oracle_database_install_role_oracle_base: >-
+          {{ path_validation_case.paths.oracle_base
+             | default(install_path_validation_baseline.oracle_base) }}
+        oracle_database_install_role_install_folder_name: >-
+          {{ path_validation_case.paths.install_folder_name
+             | default(install_path_validation_baseline.install_folder_name) }}
+        oracle_database_install_role_new_inventory_location: >-
+          {{ path_validation_case.paths.new_inventory_location
+             | default(install_path_validation_baseline.new_inventory_location) }}
+        oracle_database_install_role_inventory_location: >-
+          {{ path_validation_case.paths.inventory_location
+             | default(install_path_validation_baseline.inventory_location) }}
+        oracle_database_install_role_env_tns_admin: >-
+          {{ path_validation_case.paths.env_tns_admin
+             | default(install_path_validation_baseline.env_tns_admin) }}
+        oracle_database_install_role_env_path_dirs: >-
+          {{ path_validation_case.paths.env_path_dirs
+             | default(install_path_validation_baseline.env_path_dirs) }}
+        oracle_database_install_role_response_file: >-
+          {{ path_validation_case.paths.response_file
+             | default(install_path_validation_baseline.response_file) }}
+        oracle_database_install_role_response_extra_file: >-
+          {{ path_validation_case.paths.response_extra_file
+             | default(install_path_validation_baseline.response_extra_file) }}
+        oracle_database_install_role_install_edition: "not-an-edition"
+  rescue:
+    - name: Keep the validation errors
+      ansible.builtin.set_fact:
+        install_path_validation_task: "{{ ansible_failed_task.name | default('') }}"
+        install_path_validation_errors: "{{ ansible_failed_result.msg | default('') }}"
+
+- name: Check the outcome ({{ path_validation_case.name }})
+  ansible.builtin.assert:
+    that:
+      - install_path_validation_task | default('') in __install_path_validation_tasks
+      - __install_path_validation_actual == (path_validation_case.rejected | sort)
+    fail_msg: >-
+      stopped at '{{ install_path_validation_task | default('') }}';
+      rejected {{ __install_path_validation_actual }} (expected {{ path_validation_case.rejected | sort }})
+    quiet: true
+  vars:
+    __install_path_validation_tasks:
+      - Validate the install layout inputs
+      - Validate the environment file inputs
+      - Validate the installer inputs
+    __install_path_validation_errors: >-
+      {{ install_path_validation_errors | default('')
+         | regex_replace('\AInvalid [a-z ]+ inputs: ', '') | split(' | ') }}
+    __install_path_validation_actual: >-
+      {{ __install_path_validation_errors | map('regex_search', '\A\S+') | map('default', '', true)
+         | map('regex_replace', '\Aoracle_database_install_role_', '')
+         | reject('in', ['', 'install_edition']) | unique | sort }}
+
+- name: Forget the outcome of this case
+  ansible.builtin.set_fact:
+    install_path_validation_task: ""
+    install_path_validation_errors: ""

@@ -1,0 +1,7 @@
+---
+# initialization_role has no variables of its own. Its inputs (DATABASE_NAME, db_owner,
+# oracle_common_privileged_user (alias b_user), oracle_common_group_name (alias GROUP_NAME),
+# oracle_common_manage_group_membership, oracle_common_remote_script_directory (alias remote_script_directory),
+# oracle_common_remote_output_directory (alias remote_output_directory), oracle_common_script_permission
+# (alias script_permission)) and the per-OS values it uses are defined once in roles/oracle_common
+# (defaults/main.yml, vars/<os>.yml). Run oracle_common before this role.

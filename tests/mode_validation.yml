@@ -1,0 +1,399 @@
+---
+# Regression test for the permission-mode guards (resolution plan steps 13-15, finding H3).
+# Runs on the controller only (connection local); it validates inputs and touches one file in a
+# private temporary directory, nothing else. Run from the repository root:
+#   ansible-playbook -i localhost, tests/mode_validation.yml
+#
+# An unquoted YAML mode is an integer: `script_permission: 0777` is 511 and 0644 is 420. Before the
+# fix the guards matched the decimal text ("511" passed, "420" was reported group-writable) and the
+# modules then applied 0777. Each case below checks the normalised value, which inputs are rejected,
+# and (for one accepted integer) the mode the file module really applies.
+#
+# It also covers the '..' path guard (__oracle_common_re_dotdot): a '..' component at the start, in the
+# middle or at the end of a path is rejected, while names that merely contain dots are accepted, both in
+# the oracle_common preflight and in every path checked by the oracle_database_install_role preflight.
+#
+# It also covers the artifact checksum rules (validate_security_inputs.yml): exact hex digest length per algorithm
+# (either case) or an http(s) checksum-file URL; all-zero placeholder digests, wrong lengths, non-hex digits and
+# other URL schemes are rejected, and the errors name the artifact without printing the value.
+#
+# It also covers the Red Hat family release guard in roles/oracle_common/tasks/os_vars.yml: any os_family RedHat
+# distribution with a major release before 8 (EL7, CentOS 6, Amazon Linux 2) is refused before any OS file is loaded,
+# with a message naming the distribution and release, while RHEL 8/9, rebuilds such as Rocky and Oracle Linux 8/9, and
+# AIX are accepted with the prerequisite list of their release file, and Amazon Linux 2023 and Fedora 40 are accepted
+# with the empty list of RedHat.yml.
+- name: Permission-mode validation regression test
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  # Role defaults and patterns first, then the test inputs (a later vars file wins).
+  vars_files:
+    - ../roles/oracle_common/defaults/main.yml
+    - ../roles/oracle_common/vars/main.yml
+    - ../roles/oracle_common/vars/Linux.yml
+    - ../roles/oracle_database_install_role/defaults/main.yml
+    - vars/mode_validation.yml
+  vars:
+    mode_validation_common_cases:
+      - {name: string defaults, modes: {}, normalised: {script_permission: "0750"}, rejected: []}
+      - {name: int 511 (unquoted 0777), modes: {script_permission: 511}, normalised: {script_permission: "0777"}, rejected: [script_permission]}
+      - {name: int 420 (unquoted 0644), modes: {script_permission: 420}, normalised: {script_permission: "0644"}, rejected: []}
+      - {name: int 488 (unquoted 0750), modes: {script_permission: 488}, normalised: {script_permission: "0750"}, rejected: []}
+      - {name: unquoted decimal 750, modes: {script_permission: 750}, normalised: {script_permission: "1356"}, rejected: [script_permission]}
+      - {name: string 0777, modes: {script_permission: "0777"}, normalised: {script_permission: "0777"}, rejected: [script_permission]}
+      - name: int 511 staging directories
+        modes: {oracle_common_staging_dir_mode: 511, oracle_common_staging_parent_mode: 511}
+        normalised: {oracle_common_staging_dir_mode: "0777", oracle_common_staging_parent_mode: "0777"}
+        rejected: [oracle_common_staging_dir_mode, oracle_common_staging_parent_mode]
+      - name: int 420 / 448 staging directories
+        modes: {oracle_common_staging_dir_mode: 448, oracle_common_staging_parent_mode: 420}
+        normalised: {oracle_common_staging_dir_mode: "0700", oracle_common_staging_parent_mode: "0644"}
+        rejected: []
+    mode_validation_install_cases:
+      - {name: string defaults, modes: {}, normalised: {extracted_mode: "u+rwX,g+rX,g-w,o-rwx", home_mode: "0755", root_script_mode: "0755"},
+         rejected: []}
+      - {name: int 511 extracted tree, modes: {extracted_mode: 511}, normalised: {extracted_mode: "0777"}, rejected: [extracted_mode]}
+      - {name: int 420 extracted tree, modes: {extracted_mode: 420}, normalised: {extracted_mode: "0644"}, rejected: []}
+      - name: int 511 everywhere
+        modes: {home_mode: 511, download_dir_mode: 511, download_file_mode: 511, download_parent_mode: 511, env_file_mode: 511,
+                inventory_pointer_mode: 511, inventory_dir_mode: 511, root_script_mode: 511}
+        normalised: {home_mode: "0777", inventory_dir_mode: "0777", root_script_mode: "0777"}
+        rejected: [home_mode, download_dir_mode, download_file_mode, download_parent_mode, env_file_mode, inventory_pointer_mode,
+                   inventory_dir_mode, root_script_mode]
+      - name: int 420 everywhere, int 504 (0770) inventory directory
+        modes: {home_mode: 420, download_dir_mode: 420, download_file_mode: 420, download_parent_mode: 420, env_file_mode: 420,
+                inventory_pointer_mode: 420, inventory_dir_mode: 504, root_script_mode: 493}
+        normalised: {home_mode: "0644", download_file_mode: "0644", inventory_dir_mode: "0770", root_script_mode: "0755"}
+        rejected: []
+      - {name: group-writable symbolic tree, modes: {extracted_mode: "u+rwX,g+rwX"}, normalised: {}, rejected: [extracted_mode]}
+    # Strings the '..' pattern must find (rejected) or must not find (accepted).
+    path_validation_dotdot_rejected: [.., ../u01, /.., /u01/.., /u01/app/.., /u01/../app, /u01/app/../.., ../..]
+    path_validation_dotdot_accepted: [/u01, /u01/app..x, /u01/app.., /u01/..app, /u01/.hidden, /u01/./app, /u01/..., /u01/app/19.0.0.0, ., ...]
+    path_validation_baseline:
+      mountpoint: /u01
+      oracle_common_site_prefix: /local
+      oracle_common_staging_base: /u01/oracle/ansible_staging
+    path_validation_cases:
+      - {name: valid baseline, paths: {}, rejected: []}
+      - name: trailing '..'
+        paths: {mountpoint: /u01/app/.., oracle_common_site_prefix: /local/.., oracle_common_staging_base: /u01/oracle/..}
+        rejected: [mountpoint, oracle_common_site_prefix, oracle_common_staging_base]
+      - name: inner '..'
+        paths: {mountpoint: /u01/../etc, oracle_common_site_prefix: /local/../etc, oracle_common_staging_base: /u01/../tmp}
+        rejected: [mountpoint, oracle_common_site_prefix, oracle_common_staging_base]
+      - {name: root followed by '..', paths: {mountpoint: /.., oracle_common_staging_base: /../tmp}, rejected: [mountpoint, oracle_common_staging_base]}
+      - name: relative '..' paths
+        paths: {mountpoint: .., oracle_common_site_prefix: ../local, oracle_common_staging_base: ../tmp}
+        rejected: [mountpoint, oracle_common_site_prefix, oracle_common_staging_base]
+      - name: names that merely contain dots
+        paths: {mountpoint: /u01/app..x, oracle_common_site_prefix: /local/.hidden, oracle_common_staging_base: /u01/oracle/19.0.0.0/stage..}
+        rejected: []
+    # Install-role preflight (tasks/preflight.yml): every path it checks uses the same '..' rule; '/' alone
+    # is also rejected for the layout paths. Each case varies one group of checks (layout, environment file
+    # or installer) so the run stops at that group.
+    install_path_validation_baseline:
+      oracle_home: /u01/oracle/product/19.0.0.0
+      oracle_base: /u01/oracle
+      install_folder_name: /local/software/TESTDB_19.0.0.0
+      new_inventory_location: /u01/oracle/oraInventory
+      inventory_location: ""
+      oracle_common_inventory_pointer_file: /etc/oraInst.loc
+      env_tns_admin: $ORACLE_BASE/admin/network/admin
+      env_path_dirs: [/usr/bin, /bin, /usr/local/bin]
+      response_file: ""
+      response_extra_file: ""
+    install_path_validation_cases:
+      - {name: valid baseline, paths: {}, rejected: []}
+      - name: layout trailing '..'
+        paths: {oracle_home: /u01/oracle/product/.., oracle_base: /u01/oracle/.., install_folder_name: /local/software/..,
+                new_inventory_location: /u01/oracle/oraInventory/.., inventory_location: /u01/app/oraInventory/..,
+                oracle_common_inventory_pointer_file: /etc/..}
+        rejected: [oracle_home, oracle_base, install_folder_name, new_inventory_location, inventory_location,
+                   oracle_common_inventory_pointer_file]
+      - name: layout inner '..'
+        paths: {oracle_home: /u01/../etc/product, oracle_base: /u01/../etc, install_folder_name: /local/../tmp/software,
+                new_inventory_location: /u01/../oraInventory, inventory_location: /u01/../app/oraInventory,
+                oracle_common_inventory_pointer_file: /etc/../tmp/oraInst.loc}
+        rejected: [oracle_home, oracle_base, install_folder_name, new_inventory_location, inventory_location,
+                   oracle_common_inventory_pointer_file]
+      - name: layout root followed by '..'
+        paths: {oracle_home: /.., oracle_base: /../u01, inventory_location: /../oraInventory}
+        rejected: [oracle_home, oracle_base, inventory_location]
+      - name: layout leading and bare '..'
+        paths: {oracle_home: ../u01/product, oracle_base: .., install_folder_name: ../local/software,
+                new_inventory_location: ../.., inventory_location: .., oracle_common_inventory_pointer_file: ../etc/oraInst.loc}
+        rejected: [oracle_home, oracle_base, install_folder_name, new_inventory_location, inventory_location,
+                   oracle_common_inventory_pointer_file]
+      - name: layout root directory
+        paths: {oracle_base: /, new_inventory_location: //, inventory_location: /}
+        rejected: [oracle_base, new_inventory_location, inventory_location]
+      # The shared rule ends in \Z (not `$`, which also matches before a final line break), so it does not see
+      # '..' followed by a line break; such values are rejected because every path must also match a pattern
+      # without line breaks.
+      - name: layout '..' before a final line break
+        paths: {oracle_home: "/u01/oracle/product/..\n", inventory_location: "/u01/app/..\n", oracle_common_inventory_pointer_file: "/etc/..\n"}
+        rejected: [oracle_home, inventory_location, oracle_common_inventory_pointer_file]
+      - name: layout names that merely contain dots
+        paths: {oracle_home: /u01/oracle/product/19.0.0.0_2, oracle_base: /u01/app..x, install_folder_name: /local/software/TESTDB..,
+                new_inventory_location: /u01/.hidden/oraInventory, inventory_location: /u01/..app/oraInventory,
+                oracle_common_inventory_pointer_file: /etc/./oraInst.loc...}
+        rejected: []
+      - name: environment file '..' at the end, in the middle, at the start and bare
+        paths: {env_tns_admin: $ORACLE_BASE/.., env_path_dirs: [/usr/bin, /usr/.., /opt/../bin]}
+        rejected: [env_tns_admin, env_path_dirs]
+      - {name: environment file inner '..', paths: {env_tns_admin: $ORACLE_HOME/../network/admin}, rejected: [env_tns_admin]}
+      - {name: environment file absolute '..', paths: {env_tns_admin: /etc/../network, env_path_dirs: [/..]}, rejected: [env_tns_admin, env_path_dirs]}
+      - {name: environment file leading '..', paths: {env_tns_admin: ../network, env_path_dirs: [../bin]}, rejected: [env_tns_admin, env_path_dirs]}
+      - {name: environment file bare '..', paths: {env_tns_admin: .., env_path_dirs: [..]}, rejected: [env_tns_admin, env_path_dirs]}
+      - name: environment file '..' before a final line break
+        paths: {env_tns_admin: "$ORACLE_BASE/..\n", env_path_dirs: ["/usr/..\n"]}
+        rejected: [env_tns_admin, env_path_dirs]
+      - name: environment file names that merely contain dots
+        paths: {env_tns_admin: $ORACLE_BASE/admin..x/network/.admin, env_path_dirs: [/usr/bin, /opt/app..x/bin, /opt/.hidden, /opt/19.0.0.0/bin..]}
+        rejected: []
+      - {name: installer trailing '..', paths: {response_file: /u01/oracle/.., response_extra_file: /u01/..}, rejected: [response_file, response_extra_file]}
+      - name: installer inner '..'
+        paths: {response_file: /u01/oracle/../etc/db.rsp, response_extra_file: /../extra.rsp}
+        rejected: [response_file, response_extra_file]
+      - {name: installer leading and bare '..', paths: {response_file: ../db.rsp, response_extra_file: ..}, rejected: [response_file, response_extra_file]}
+      - name: installer '..' before a final line break
+        paths: {response_file: "/u01/oracle/..\n", response_extra_file: "/u01/..\n"}
+        rejected: [response_file, response_extra_file]
+      - name: installer names that merely contain dots
+        paths: {response_file: /u01/oracle/19.0.0.0/db..rsp, response_extra_file: /u01/.hidden/..extra.rsp}
+        rejected: []
+    # Artifact checksums (validate_security_inputs.yml): the baseline is the valid pair from vars/mode_validation.yml
+    # (repeated here, as the cases replace oracle_common_artifact_checksums); each case adds or replaces entries and
+    # lists the keys rejected as malformed (format) or as an all-zero placeholder (placeholder).
+    checksum_validation_baseline:
+      LINUX_binaries.tar.gz: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      LINUX_jan26.tar.gz: "sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+    checksum_cases:
+      - {name: valid baseline, checksums: {}}
+      - name: every algorithm with its exact length accepted
+        checksums:
+          md5.tar.gz: "md5:{{ '0123456789abcdef' * 2 }}"
+          sha1.tar.gz: "sha1:{{ '0123456789' * 4 }}"
+          sha224.tar.gz: "sha224:{{ 'abcdef01' * 7 }}"
+          sha256.tar.gz: "sha256:{{ '9876543210fedcba' * 4 }}"
+          sha384.tar.gz: "sha384:{{ '0123456789abcdef' * 6 }}"
+          sha512.tar.gz: "sha512:{{ 'fedcba9876543210' * 8 }}"
+      - name: mixed and upper case hex accepted
+        checksums:
+          mixed256.tar.gz: "sha256:{{ '0123456789AbCdEf' * 4 }}"
+          upper512.tar.gz: "sha512:{{ '0123456789ABCDEF' * 8 }}"
+          upper_md5.tar.gz: "md5:{{ 'ABCDEF0123456789' * 2 }}"
+      - name: checksum file URL accepted
+        checksums:
+          https.tar.gz: sha256:https://artifactory.example.com/artifactory/release/oracledatabase/https.tar.gz.sha256
+          http.tar.gz: sha512:http://127.0.0.1:8080/oracledatabase/http.tar.gz.sha512
+          LINUX_binaries.tar.gz: md5:https://artifactory.example.com/artifactory/release/LINUX_binaries.tar.gz.md5
+      - name: all-zero digests rejected as placeholders
+        checksums:
+          LINUX_binaries.tar.gz: "sha256:{{ '0' * 64 }}"
+          LINUX_jan26.tar.gz: "md5:{{ '0' * 32 }}"
+          zero1.tar.gz: "sha1:{{ '0' * 40 }}"
+          zero224.tar.gz: "sha224:{{ '0' * 56 }}"
+          zero384.tar.gz: "sha384:{{ '0' * 96 }}"
+          zero512.tar.gz: "sha512:{{ '0' * 128 }}"
+          zero_short.tar.gz: "sha256:0000"
+        placeholder: [LINUX_binaries.tar.gz, LINUX_jan26.tar.gz, zero1.tar.gz, zero224.tar.gz, zero384.tar.gz, zero512.tar.gz,
+                      zero_short.tar.gz]
+      - name: wrong digest length rejected
+        checksums:
+          short256.tar.gz: "sha256:{{ 'a' * 63 }}"
+          long256.tar.gz: "sha256:{{ 'a' * 65 }}"
+          md5_as_sha256.tar.gz: "md5:{{ 'a' * 64 }}"
+          sha256_as_sha512.tar.gz: "sha512:{{ 'a' * 64 }}"
+          sha1_as_md5.tar.gz: "sha1:{{ 'a' * 32 }}"
+          empty.tar.gz: "sha256:"
+        format: [short256.tar.gz, long256.tar.gz, md5_as_sha256.tar.gz, sha256_as_sha512.tar.gz, sha1_as_md5.tar.gz, empty.tar.gz]
+      - name: non-hex digests rejected
+        checksums:
+          letter_g.tar.gz: "sha256:{{ 'a' * 63 }}g"
+          dashes.tar.gz: "md5:{{ '0123-4567' }}{{ 'a' * 23 }}"
+          newline.tar.gz: "sha256:{{ 'a' * 64 }}\n"
+          space.tar.gz: "sha256:{{ 'a' * 32 }} {{ 'a' * 31 }}"
+        format: [letter_g.tar.gz, dashes.tar.gz, newline.tar.gz, space.tar.gz]
+      - name: other URL schemes and garbage rejected
+        checksums:
+          ftp.tar.gz: sha256:ftp://artifactory.example.com/ftp.tar.gz.sha256
+          file.tar.gz: sha256:file:///etc/ftp.tar.gz.sha256
+          upper_scheme.tar.gz: sha256:HTTPS://artifactory.example.com/upper.sha256
+          bare_scheme.tar.gz: "sha256:https://"
+          url_space.tar.gz: "sha256:https://artifactory.example.com/a b.sha256"
+          garbage.tar.gz: sha256:not-a-digest
+          no_algorithm.tar.gz: "{{ 'a' * 64 }}"
+          unknown_algorithm.tar.gz: "sha3:{{ 'a' * 64 }}"
+          upper_algorithm.tar.gz: "SHA256:{{ 'a' * 64 }}"
+          change_me.tar.gz: <CHANGE_ME>
+        format: [ftp.tar.gz, file.tar.gz, upper_scheme.tar.gz, bare_scheme.tar.gz, url_space.tar.gz, garbage.tar.gz, no_algorithm.tar.gz,
+                 unknown_algorithm.tar.gz, upper_algorithm.tar.gz, change_me.tar.gz]
+      # The example inventory ships placeholders that the validation must reject.
+      - name: inventory/example placeholders rejected
+        checksums: >-
+          {{ (lookup('ansible.builtin.file', playbook_dir ~ '/../inventory/example/group_vars/oracle_db_servers/main.yml')
+              | from_yaml).oracle_common_artifact_checksums }}
+        format: [LINUX_binaries.tar.gz, LINUX_jan26.tar.gz]
+    # Simulated facts for the os_vars.yml release guard. AIX is not last, so the Linux variables are loaded
+    # again at the end (the file-mode block above already ran; this keeps the play state Linux-like).
+    platform_cases:
+      - name: RHEL 7 refused
+        facts: {system: Linux, os_family: RedHat, distribution: RedHat, distribution_major_version: "7"}
+        refused: true
+        message: RedHat 7 is not supported
+      - name: Oracle Linux 7 refused
+        facts: {system: Linux, os_family: RedHat, distribution: OracleLinux, distribution_major_version: "7"}
+        refused: true
+        message: OracleLinux 7 is not supported
+      - name: CentOS 6 refused
+        facts: {system: Linux, os_family: RedHat, distribution: CentOS, distribution_major_version: "6"}
+        refused: true
+        message: CentOS 6 is not supported
+      - name: Amazon Linux 2 refused
+        facts: {system: Linux, os_family: RedHat, distribution: Amazon, distribution_major_version: "2"}
+        refused: true
+        message: Amazon 2 is not supported
+      - name: Red Hat family without a release refused
+        facts: {system: Linux, os_family: RedHat, distribution: RedHat}
+        refused: true
+        message: is not supported
+      - name: RHEL 8 accepted
+        facts: {system: Linux, os_family: RedHat, distribution: RedHat, distribution_major_version: "8"}
+        refused: false
+        prereq_file: RedHat-8.yml
+      - name: Rocky 8 accepted
+        facts: {system: Linux, os_family: RedHat, distribution: Rocky, distribution_major_version: "8"}
+        refused: false
+        prereq_file: RedHat-8.yml
+      - name: AIX 7.2 accepted
+        facts: {system: AIX, os_family: AIX, distribution: AIX, distribution_major_version: "7"}
+        refused: false
+        prereq_file: AIX.yml
+      - name: Oracle Linux 9 accepted
+        facts: {system: Linux, os_family: RedHat, distribution: OracleLinux, distribution_major_version: "9"}
+        refused: false
+        prereq_file: RedHat-9.yml
+      - name: RHEL 9 accepted
+        facts: {system: Linux, os_family: RedHat, distribution: RedHat, distribution_major_version: "9"}
+        refused: false
+        prereq_file: RedHat-9.yml
+      # No release file for these: they load Linux.yml + RedHat.yml and keep its empty list, as before the guard.
+      - name: Amazon Linux 2023 accepted
+        facts: {system: Linux, os_family: RedHat, distribution: Amazon, distribution_major_version: "2023"}
+        refused: false
+        prereq_file: RedHat.yml
+        prereq_empty: true
+      - name: Fedora 40 accepted
+        facts: {system: Linux, os_family: RedHat, distribution: Fedora, distribution_major_version: "40"}
+        refused: false
+        prereq_file: RedHat.yml
+        prereq_empty: true
+  tasks:
+    - name: Run the oracle_common cases
+      ansible.builtin.include_tasks: tasks/common_mode_case.yml
+      loop: "{{ mode_validation_common_cases }}"
+      loop_control:
+        loop_var: mode_validation_case
+        label: "{{ mode_validation_case.name }}"
+
+    - name: Run the oracle_database_install_role cases
+      ansible.builtin.include_tasks: tasks/install_mode_case.yml
+      loop: "{{ mode_validation_install_cases }}"
+      loop_control:
+        loop_var: mode_validation_case
+        label: "{{ mode_validation_case.name }}"
+
+    - name: Check the '..' pattern directly
+      ansible.builtin.assert:
+        that:
+          - path_validation_dotdot_rejected | reject('search', __oracle_common_re_dotdot) | list | length == 0
+          - path_validation_dotdot_accepted | select('search', __oracle_common_re_dotdot) | list | length == 0
+        fail_msg: >-
+          not rejected: {{ path_validation_dotdot_rejected | reject('search', __oracle_common_re_dotdot) | list }};
+          wrongly rejected: {{ path_validation_dotdot_accepted | select('search', __oracle_common_re_dotdot) | list }}
+        quiet: true
+
+    - name: Run the oracle_common path cases
+      ansible.builtin.include_tasks: tasks/common_path_case.yml
+      loop: "{{ path_validation_cases }}"
+      loop_control:
+        loop_var: path_validation_case
+        label: "{{ path_validation_case.name }}"
+
+    - name: Run the oracle_database_install_role path cases
+      ansible.builtin.include_tasks: tasks/install_path_case.yml
+      loop: "{{ install_path_validation_cases }}"
+      loop_control:
+        loop_var: path_validation_case
+        label: "{{ path_validation_case.name }}"
+
+    - name: Restore the baseline paths
+      ansible.builtin.set_fact:
+        mountpoint: "{{ path_validation_baseline.mountpoint }}"
+        oracle_common_site_prefix: "{{ path_validation_baseline.oracle_common_site_prefix }}"
+        oracle_common_staging_base: "{{ path_validation_baseline.oracle_common_staging_base }}"
+        oracle_common_inventory_pointer_file: "{{ install_path_validation_baseline.oracle_common_inventory_pointer_file }}"
+
+    # The applied mode equals the validated one: int 420 must give 0644 on disk, not 0420 or 0777.
+    - name: Apply a normalised integer mode with the file module
+      block:
+        - name: Create a private temporary directory
+          ansible.builtin.tempfile:
+            state: directory
+            suffix: .mode_validation
+          register: mode_validation_tmp
+
+        - name: Use the unquoted mode 0644 (int 420)
+          ansible.builtin.set_fact:
+            script_permission: 420
+            oracle_common_staging_dir_mode: "0750"
+            oracle_common_staging_parent_mode: "0755"
+
+        - name: Normalise it as the roles do
+          ansible.builtin.include_role:
+            name: oracle_common
+            tasks_from: preflight
+
+        - name: Create a file with the normalised mode
+          ansible.builtin.file:
+            path: "{{ mode_validation_tmp.path }}/script"
+            state: touch
+            mode: "{{ oracle_common_modes.script_permission }}"
+            access_time: preserve
+            modification_time: preserve
+
+        - name: Read the applied mode
+          ansible.builtin.stat:
+            path: "{{ mode_validation_tmp.path }}/script"
+          register: mode_validation_stat
+
+        - name: Check the applied mode
+          ansible.builtin.assert:
+            that: mode_validation_stat.stat.mode == '0644'
+            fail_msg: "expected 0644 on disk, got {{ mode_validation_stat.stat.mode }}"
+            quiet: true
+      always:
+        - name: Remove the temporary directory
+          ansible.builtin.file:
+            path: "{{ mode_validation_tmp.path }}"
+            state: absent
+          when: mode_validation_tmp.path is defined
+
+    - name: Run the artifact checksum cases
+      ansible.builtin.include_tasks: tasks/checksum_case.yml
+      loop: "{{ checksum_cases }}"
+      loop_control:
+        loop_var: checksum_case
+        label: "{{ checksum_case.name }}"
+
+    - name: Restore the baseline checksums
+      ansible.builtin.set_fact:
+        oracle_common_artifact_checksums: "{{ checksum_validation_baseline }}"
+
+    - name: Run the Red Hat family release guard cases
+      ansible.builtin.include_tasks: tasks/platform_case.yml
+      loop: "{{ platform_cases }}"
+      loop_control:
+        loop_var: platform_case
+        label: "{{ platform_case.name }}"

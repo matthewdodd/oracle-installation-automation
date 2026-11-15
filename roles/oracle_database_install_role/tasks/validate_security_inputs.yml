@@ -1,0 +1,115 @@
+---
+# Permission and download-integrity inputs (no host access; also run by tests/mode_validation.yml).
+# Imported by tasks/preflight.yml. Sets oracle_database_install_role_modes: the normalised mode that
+# every task applies.
+
+# Permission modes are normalised to an octal string first; the checks below and every task that
+# sets a mode use the normalised value (oracle_database_install_role_modes.<name>), so what is checked
+# is what is applied. An unquoted YAML mode is an integer (0777 -> 511, 0644 -> 420): '%04o' restores
+# "0777" (rejected) and "0644" (accepted); a decimal such as 750 becomes "1356" and is rejected.
+- name: Normalise the permission modes
+  ansible.builtin.set_fact:
+    oracle_database_install_role_modes:
+      home_mode: >-
+        {{ ('%04o' | format(oracle_database_install_role_home_mode)) if oracle_database_install_role_home_mode is integer
+           else (oracle_database_install_role_home_mode | string | trim) }}
+      download_dir_mode: >-
+        {{ ('%04o' | format(oracle_database_install_role_download_dir_mode)) if oracle_database_install_role_download_dir_mode is integer
+           else (oracle_database_install_role_download_dir_mode | string | trim) }}
+      download_file_mode: >-
+        {{ ('%04o' | format(oracle_database_install_role_download_file_mode)) if oracle_database_install_role_download_file_mode is integer
+           else (oracle_database_install_role_download_file_mode | string | trim) }}
+      download_parent_mode: >-
+        {{ ('%04o' | format(oracle_database_install_role_download_parent_mode)) if oracle_database_install_role_download_parent_mode is integer
+           else (oracle_database_install_role_download_parent_mode | string | trim) }}
+      env_file_mode: >-
+        {{ ('%04o' | format(oracle_database_install_role_env_file_mode)) if oracle_database_install_role_env_file_mode is integer
+           else (oracle_database_install_role_env_file_mode | string | trim) }}
+      inventory_pointer_mode: >-
+        {{ ('%04o' | format(oracle_database_install_role_inventory_pointer_mode)) if oracle_database_install_role_inventory_pointer_mode is integer
+           else (oracle_database_install_role_inventory_pointer_mode | string | trim) }}
+      inventory_dir_mode: >-
+        {{ ('%04o' | format(oracle_database_install_role_inventory_dir_mode)) if oracle_database_install_role_inventory_dir_mode is integer
+           else (oracle_database_install_role_inventory_dir_mode | string | trim) }}
+      extracted_mode: >-
+        {{ ('%04o' | format(oracle_database_install_role_extracted_mode)) if oracle_database_install_role_extracted_mode is integer
+           else (oracle_database_install_role_extracted_mode | string | trim) }}
+      root_script_mode: >-
+        {{ ('%04o' | format(oracle_database_install_role_root_script_mode)) if oracle_database_install_role_root_script_mode is integer
+           else (oracle_database_install_role_root_script_mode | string | trim) }}
+
+# Secure defaults that cannot be switched off by accident: no group/world-writable modes (0777 is
+# rejected, the inventory directory may be group-writable for the oinstall-style group), and a
+# checksum for every artifact unless oracle_common_artifact_checksum_required is explicitly false, and every
+# checksum well formed (exact digest length per algorithm, or an http(s) checksum-file URL) and not an all-zero placeholder.
+- name: Validate the permission and download integrity inputs
+  ansible.builtin.assert:
+    that: __oracle_database_install_role_security_errors | length == 0
+    fail_msg: "Invalid security inputs: {{ __oracle_database_install_role_security_errors | join(' | ') }}"
+    quiet: true
+  vars:
+    __oracle_database_install_role_mode_checks:
+      - {name: oracle_database_install_role_home_mode, value: "{{ oracle_database_install_role_modes.home_mode }}"}
+      - {name: oracle_database_install_role_download_dir_mode, value: "{{ oracle_database_install_role_modes.download_dir_mode }}"}
+      - {name: oracle_database_install_role_download_file_mode, value: "{{ oracle_database_install_role_modes.download_file_mode }}"}
+      - {name: oracle_database_install_role_download_parent_mode, value: "{{ oracle_database_install_role_modes.download_parent_mode }}"}
+      - {name: oracle_database_install_role_env_file_mode, value: "{{ oracle_database_install_role_modes.env_file_mode }}"}
+      - {name: oracle_database_install_role_inventory_pointer_mode, value: "{{ oracle_database_install_role_modes.inventory_pointer_mode }}"}
+      - {name: oracle_database_install_role_inventory_dir_mode, value: "{{ oracle_database_install_role_modes.inventory_dir_mode }}", group_write: true}
+      - {name: oracle_database_install_role_root_script_mode, value: "{{ oracle_database_install_role_modes.root_script_mode }}"}
+    __oracle_database_install_role_xmode: "{{ oracle_database_install_role_modes.extracted_mode }}"
+    __oracle_database_install_role_extracted_mode_ok: >-
+      {{ (__oracle_database_install_role_xmode is match(__oracle_common_re_octal_mode)
+          and __oracle_database_install_role_xmode is not match(__oracle_common_re_mode_world_writable)
+          and __oracle_database_install_role_xmode is not match(__oracle_common_re_mode_group_writable))
+         or (__oracle_database_install_role_xmode is match(__oracle_common_re_symbolic_mode)
+             and __oracle_database_install_role_xmode.split(',') | select('match', __oracle_common_re_symbolic_mode_unsafe) | list | length == 0) }}
+    __oracle_database_install_role_artifacts: >-
+      {{ [oracle_database_install_role_install_file_name, oracle_database_install_role_patch_file_name] | map('trim') | unique | list }}
+    __oracle_database_install_role_checksums: "{{ oracle_common_artifact_checksums | default({}, true) }}"
+    __oracle_database_install_role_missing_checksum_msg: >-
+      no checksum for \1 in oracle_common_artifact_checksums (required: add "\1: sha256:<digest>", or set
+      oracle_common_artifact_checksum_required=false to download it unverified)
+    # Checksum errors name the artifact (the key) only, never the value.
+    __oracle_database_install_role_bad_checksum_msg: >-
+      oracle_common_artifact_checksums[\1] must be <algorithm>:<hex digest> with the digest length of the algorithm
+      (md5 32, sha1 40, sha224 56, sha256 64, sha384 96, sha512 128 hex digits), or <algorithm>:<http(s) URL of a checksum file>,
+      where <algorithm> is one of md5, sha1, sha224, sha256, sha384, sha512 in lowercase
+    __oracle_database_install_role_zero_checksum_msg: >-
+      oracle_common_artifact_checksums[\1] is an all-zero placeholder digest: replace it with the real digest of the artifact
+      from a trusted source
+    __oracle_database_install_role_security_errors: >-
+      {{ (__oracle_database_install_role_mode_checks
+          | rejectattr('value', 'match', __oracle_common_re_octal_mode)
+          | map(attribute='name') | map('regex_replace', '$', ' must be a quoted octal mode such as "0750"')
+          | list)
+         + (__oracle_database_install_role_mode_checks
+            | selectattr('value', 'match', __oracle_common_re_octal_mode)
+            | selectattr('value', 'match', __oracle_common_re_mode_world_writable)
+            | map(attribute='name') | map('regex_replace', '$', ' must not be world-writable')
+            | list)
+         + (__oracle_database_install_role_mode_checks
+            | rejectattr('group_write', 'defined')
+            | selectattr('value', 'match', __oracle_common_re_octal_mode)
+            | selectattr('value', 'match', __oracle_common_re_mode_group_writable)
+            | map(attribute='name') | map('regex_replace', '$', ' must not be group-writable')
+            | list)
+         + ([('oracle_database_install_role_extracted_mode must be a quoted octal or symbolic mode that gives group and others no write access'
+             ~ ' (e.g. u+rwX,g+rX,g-w,o-rwx or "0750"); got ' ~ __oracle_database_install_role_xmode)]
+            if not (__oracle_database_install_role_extracted_mode_ok | bool) else [])
+         + (__oracle_database_install_role_artifacts
+            | reject('in', __oracle_database_install_role_checksums)
+            | map('regex_replace', '^(.*)$', __oracle_database_install_role_missing_checksum_msg)
+            | list
+            if oracle_common_artifact_checksum_required | bool else [])
+         + (__oracle_database_install_role_checksums | dict2items
+            | rejectattr('value', 'match', __oracle_common_re_checksum_zero)
+            | rejectattr('value', 'match', __oracle_common_re_checksum)
+            | map(attribute='key')
+            | map('regex_replace', '^(.*)$', __oracle_database_install_role_bad_checksum_msg)
+            | list)
+         + (__oracle_database_install_role_checksums | dict2items
+            | selectattr('value', 'match', __oracle_common_re_checksum_zero)
+            | map(attribute='key')
+            | map('regex_replace', '^(.*)$', __oracle_database_install_role_zero_checksum_msg)
+            | list) }}

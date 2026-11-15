@@ -1,0 +1,29 @@
+# Claude Code / review notes (local only)
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+resolution.md
+
+# Ansible
+*.retry
+.vault_pass*
+vault_pass*
+collections/ansible_collections/
+.ansible/
+fact_cache/
+
+# Python tooling
+.venv/
+venv/
+__pycache__/
+*.pyc
+.cache/
+
+# Molecule
+.molecule/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store

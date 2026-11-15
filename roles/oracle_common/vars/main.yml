@@ -1,0 +1,47 @@
+---
+# Internal validation values used by tasks/os_vars.yml and tasks/preflight.yml. Not meant to be overridden.
+# Oldest Red Hat family major release (RHEL and rebuilds: os_family RedHat) the roles support. EL7 and Amazon
+# Linux 2 are not supported: ansible-core 2.22 needs Python 3.9 or later on the targets and they have no vendor
+# Python 3.9+.
+# Not an input: there is no release file (vars/RedHat-<major>.yml) for older releases.
+__oracle_common_redhat_min_major_version: 8
+# Every pattern is anchored with \A ... \Z (never ^ ... $): Python's `$` also matches just before
+# a trailing newline, so "oracle\n" would pass a `$`-anchored pattern and reach shell commands.
+# ORACLE_SID: a letter, then up to 7 letters, digits or underscores.
+__oracle_common_re_sid: '\A[A-Za-z][A-Za-z0-9_]{0,7}\Z'
+# Portable POSIX user / group name.
+__oracle_common_re_posix_name: '\A[A-Za-z_][A-Za-z0-9_.-]{0,31}\Z'
+# Absolute path made only of safe characters (no whitespace or shell metacharacters).
+__oracle_common_re_abs_path: '\A/[A-Za-z0-9._/-]*\Z'
+# A '..' path component anywhere: at the start, between slashes or at the end. Used with `search`
+# (a match means the path is rejected); names that merely contain dots (app..x, .hidden, 19.0.0.0)
+# do not match. Paths are also matched against __oracle_common_re_abs_path, which rejects newlines.
+__oracle_common_re_dotdot: '(?:\A|/)\.\.(?:/|\Z)'
+# http(s) URL without whitespace.
+__oracle_common_re_url: '\Ahttps?://[^\s]+\Z'
+__oracle_common_re_https_url: '\Ahttps://[^\s]+\Z'
+# Plain file name.
+__oracle_common_re_file_name: '\A[A-Za-z0-9._+-]+\Z'
+# Positive integer (seconds).
+__oracle_common_re_uint: '\A[0-9]+\Z'
+# File mode in octal (3 digits, optional leading 0). Applied to the normalised string only (tasks/preflight.yml
+# turns an integer such as 511, i.e. an unquoted 0777, into "0777" first).
+__oracle_common_re_octal_mode: '\A0?[0-7]{3}\Z'
+# Octal mode with the world (others) write bit, or the group write bit.
+__oracle_common_re_mode_world_writable: '\A0?[0-7]{2}[2367]\Z'
+__oracle_common_re_mode_group_writable: '\A0?[0-7][2367][0-7]\Z'
+# Symbolic mode (comma-separated clauses such as u+rwX,g+rX,o-rwx), and a clause that grants write to
+# group, others or everybody (who contains g, o or a, or is empty, with + or =).
+__oracle_common_re_symbolic_mode: '\A[ugoa]*[-+=][rwxXst]*(,[ugoa]*[-+=][rwxXst]*)*\Z'
+__oracle_common_re_symbolic_mode_unsafe: '\A(?:[ugoa]*[goa][ugoa]*|)[+=][rwxXst]*w'
+# get_url checksum: <algorithm>:<hex digest of exactly that algorithm's length (either case)>, or
+# <algorithm>:<http(s) URL of a checksum file> (the URL form get_url fetches; ftp and other schemes are refused).
+# Verbose pattern ((?x): the spaces and line breaks of the folded text are ignored, so it can be split).
+__oracle_common_re_checksum: >-
+  (?x)\A(?:
+  md5:[0-9A-Fa-f]{32} | sha1:[0-9A-Fa-f]{40} | sha224:[0-9A-Fa-f]{56} |
+  sha256:[0-9A-Fa-f]{64} | sha384:[0-9A-Fa-f]{96} | sha512:[0-9A-Fa-f]{128} |
+  (?:md5|sha1|sha224|sha256|sha384|sha512):https?://[^\s]+
+  )\Z
+# A digest made only of zeros (any length): a placeholder such as "sha256:000...0", never a real artifact.
+__oracle_common_re_checksum_zero: '\A(?:md5|sha1|sha224|sha256|sha384|sha512):0+\Z'

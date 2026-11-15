@@ -1,0 +1,221 @@
+---
+# Prepares the containers like a database host before the playbook runs. Test fixture only: everything
+# created here (users, stub repository, the existing installation on el9-sbs) is fake.
+- name: Prepare the database hosts
+  hosts: molecule_oracle
+  tasks:
+    # The role's own per-OS list (single source of truth), so the playbook's prerequisite check runs with
+    # its production default and passes. dnf runs as a command: on release 8 the Python that Ansible uses
+    # (3.11) has no dnf bindings, and the platform Python (3.6) is too old for ansible-core 2.22.
+    - name: Load the prerequisite package list of this release
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../roles/oracle_common/vars/RedHat-{{ ansible_facts['distribution_major_version'] }}.yml"
+        name: molecule_os_vars
+
+    - name: Install the Oracle prerequisite packages
+      ansible.builtin.command:
+        argv: "{{ ['dnf', '--assumeyes', '--setopt=install_weak_deps=False', 'install'] + molecule_os_vars['__oracle_common_prereq_packages'] }}"
+      register: molecule_prereq_install
+      changed_when: "'Nothing to do' not in molecule_prereq_install.stdout"
+
+    # --- OS users and groups (normally provided by the site build) ----------------------------------
+    - name: Create the Oracle groups
+      ansible.builtin.group:
+        name: "{{ item.name }}"
+        gid: "{{ item.gid | default(omit) }}"
+      loop:
+        - {name: oinstall, gid: "{{ molecule_oinstall_gid }}"}
+        - {name: dba, gid: "{{ molecule_dba_gid }}"}
+        # The automation group the playbook adds db_owner and the privileged user to (it must exist).
+        - {name: "{{ molecule_automation_group }}"}
+
+    - name: Create the Oracle software owner
+      ansible.builtin.user:
+        name: oracle
+        uid: "{{ molecule_oracle_uid }}"
+        group: oinstall
+        groups: [dba]
+        shell: /bin/bash
+
+    - name: Create the site directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner | default('root') }}"
+        group: "{{ item.group | default('root') }}"
+        mode: "0755"
+      loop:
+        # oracle_common_site_prefix: environment files and software staging.
+        - {path: /local}
+        # mountpoint, and ORACLE_BASE (<mountpoint>/<db_owner>) owned by the software owner.
+        - {path: /u01}
+        - {path: /u01/oracle, owner: oracle, group: oinstall}
+
+    # --- Stub artifact repository -------------------------------------------------------------------
+    - name: Copy the stub Oracle software
+      ansible.builtin.copy:
+        src: stubs/
+        dest: /root/molecule_stubs/
+        mode: "0755"
+
+    - name: Copy the repository build script
+      ansible.builtin.copy:
+        src: build_artifacts.bash
+        dest: /root/molecule_build_artifacts.bash
+        mode: "0755"
+
+    - name: Build the stub artifact repository
+      ansible.builtin.command:
+        argv:
+          - /bin/bash
+          - /root/molecule_build_artifacts.bash
+          - /root/molecule_stubs
+          - "{{ molecule_repository_dir }}/oracledatabase"
+          - "19.0.0"
+          - LINUX
+          - "{{ oracle_common_patch_file_name }}"
+          - "{{ molecule_db_ru_id }}"
+          - "{{ molecule_ojvm_id }}"
+          - "{{ molecule_old_opatch_version }}"
+          - "{{ molecule_new_opatch_version }}"
+        creates: "{{ molecule_repository_dir }}/oracledatabase/19.0.0/LINUX_binaries.tar.gz.sha256"
+
+    - name: Check whether the stub repository is already served
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ molecule_repository_port }}"
+        timeout: 1
+      register: molecule_repository_listening
+      failed_when: false
+
+    # Background HTTP server on the loopback interface of the container (lives until the container is
+    # destroyed or the async limit is reached, far longer than a test run).
+    - name: Serve the stub repository over HTTP
+      # wait_for reports state=started only when the port answered.
+      when: molecule_repository_listening.state | default('') != 'started'
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_facts['python']['executable'] }}"
+          - -m
+          - http.server
+          - --bind
+          - 127.0.0.1
+          - --directory
+          - "{{ molecule_repository_dir }}"
+          - "{{ molecule_repository_port | string }}"
+      async: 14400
+      poll: 0
+      changed_when: true
+
+    - name: Wait for the stub repository
+      ansible.builtin.uri:
+        url: "{{ molecule_repository_release_url }}/LINUX_binaries.tar.gz.sha256"
+        return_content: true
+      register: molecule_repository_check
+      until: molecule_repository_check.status | default(0) == 200
+      retries: 15
+      delay: 2
+
+    # --- Site root wrapper (only where the wrapper method is configured) ----------------------------
+    - name: Install the stub site root wrapper
+      when: (oracle_common_root_script_method | default(oracle_root_script_method | default('wrapper'))) == 'wrapper'
+      ansible.builtin.copy:
+        src: stubs/root-wrapper
+        dest: "{{ oracle_common_root_wrapper_path }}"
+        owner: root
+        group: root
+        mode: "0755"
+
+# An Oracle installation that is already on the host (and may be running): its own ORACLE_HOME at the
+# default path of the new install, a central inventory registered in /etc/oraInst.loc, and another
+# database's environment file. The playbook must reuse the inventory and leave all of it untouched.
+- name: Seed an existing Oracle installation (side-by-side target)
+  hosts: side_by_side
+  gather_facts: false
+  tasks:
+    - name: Create the existing central inventory directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: oinstall
+        mode: "{{ item.mode }}"
+      loop:
+        - {path: "{{ molecule_existing_inventory | dirname }}", owner: root, mode: "0755"}
+        - {path: "{{ molecule_existing_inventory }}", owner: oracle, mode: "0770"}
+        - {path: "{{ molecule_existing_inventory }}/ContentsXML", owner: oracle, mode: "0770"}
+
+    - name: Register the existing home in the central inventory
+      ansible.builtin.copy:
+        dest: "{{ molecule_existing_inventory }}/ContentsXML/inventory.xml"
+        owner: oracle
+        group: oinstall
+        mode: "0660"
+        content: |
+          <?xml version="1.0" standalone="yes" ?>
+          <INVENTORY>
+          <HOME_LIST>
+          <HOME NAME="OraDB19Home1" LOC="{{ molecule_existing_oracle_home }}" TYPE="O" IDX="1"/>
+          </HOME_LIST>
+          </INVENTORY>
+
+    - name: Create the existing central inventory pointer
+      ansible.builtin.copy:
+        dest: /etc/oraInst.loc
+        owner: root
+        group: oinstall
+        mode: "0644"
+        content: |
+          inventory_loc={{ molecule_existing_inventory }}
+          inst_group=oinstall
+
+    # Parent first and owned by oracle: the new home is created next to it as db_owner (<ORACLE_BASE>/product).
+    - name: Create the existing Oracle home directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: oracle
+        group: oinstall
+        mode: "0755"
+      loop:
+        - "{{ molecule_existing_oracle_home | dirname }}"
+        - "{{ molecule_existing_oracle_home }}"
+        - "{{ molecule_existing_oracle_home }}/bin"
+        - "{{ molecule_existing_oracle_home }}/OPatch"
+        - "{{ molecule_existing_oracle_home }}/dbs"
+
+    - name: Fill the existing Oracle home
+      ansible.builtin.copy:
+        dest: "{{ molecule_existing_oracle_home }}/{{ item.path }}"
+        owner: oracle
+        group: oinstall
+        mode: "{{ item.mode }}"
+        content: "{{ item.content }}"
+      loop:
+        - {path: bin/oracle, mode: "0755", content: "#!/bin/sh\necho 'existing Oracle home (test fixture)'\n"}
+        - {path: OPatch/version.txt, mode: "0644", content: "OPATCH_VERSION:12.2.0.1.40\n"}
+        - {path: "dbs/init{{ molecule_existing_database }}.ora", mode: "0640", content: "db_name={{ molecule_existing_database }}\n"}
+      loop_control:
+        label: "{{ item.path }}"
+
+    - name: Create the environment file of the existing database
+      ansible.builtin.copy:
+        dest: "/local/{{ molecule_existing_database }}.env"
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          ORACLE_SID={{ molecule_existing_database }}; export ORACLE_SID
+          ORACLE_BASE=/u01/oracle; export ORACLE_BASE
+          ORACLE_HOME={{ molecule_existing_oracle_home }}; export ORACLE_HOME
+
+    # Fingerprint of everything the playbook must not touch (verify.yml checks it with sha256sum -c).
+    # inventory.xml is left out on purpose: the installer adds the new home to it.
+    - name: Record the fingerprint of the existing installation
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          find /etc/oraInst.loc "{{ molecule_existing_oracle_home }}" "/local/{{ molecule_existing_database }}.env" -type f
+          -exec sha256sum {} + | LC_ALL=C sort -k 2 > /root/molecule_existing_installation.sha256
+        executable: /bin/bash
+        creates: /root/molecule_existing_installation.sha256

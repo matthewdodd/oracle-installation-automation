@@ -1,0 +1,132 @@
+# root_wrapper.exp - drive the site root wrapper menu that runs <dir>/root.sh as root.
+#
+# Used by tasks/root_script.yml when oracle_common_root_script_method is wrapper (the default), as
+#   <oracle_common_expect_path> -c <content of this file>
+# run as b_user. The script is static: every value comes from the environment, so no input is ever
+# parsed as Tcl or shell code.
+#
+# Dialogue (the prompts and answers of the original playbook):
+#   Enter your Selection        -> 1
+#   Enter your Selection        -> 1
+#   Enter the PATH to root.sh   -> $ORACLE_ROOT_SCRIPT_DIR
+#   Press ENTER to continue...  -> ENTER    (root.sh runs before this prompt)
+#   Enter your Selection        -> x        (leave the menu), then wait for the wrapper to exit
+# Unlike the original (which always ended with "exit 0"), every step fails on a timeout, on the
+# wrapper ending early, and on an unexpected prompt.
+#
+# Environment:
+#   ORACLE_ROOT_WRAPPER             absolute path of the wrapper (required)
+#   ORACLE_ROOT_WRAPPER_TIMEOUT     seconds to wait for each prompt, > 0 (required)
+#   ORACLE_ROOT_SCRIPT_DIR          directory holding root.sh, the answer to the PATH prompt (required)
+#   ORACLE_ROOT_WRAPPER_ACCEPT_RE   optional Tcl regex: while root.sh runs, a question matching it is
+#                                   answered with ENTER (root.sh's default answer)
+#   ORACLE_ROOT_WRAPPER_CHECK_EXIT  true (default) | false: fail when the wrapper exits non-zero
+#
+# Exit status:
+#   0  dialogue completed (and the wrapper exited 0 when checked)
+#   1  invalid environment
+#   2  timeout waiting for a prompt or for the wrapper to exit
+#   3  the wrapper ended before the dialogue completed
+#   4  unexpected prompt or question
+#   5  the wrapper exited non-zero
+
+proc fail {code message} {
+    puts "\nERROR: $message"
+    exit $code
+}
+
+# The wrapper's prompts.
+set selection_prompt "Enter your Selection"
+set path_prompt "Enter the PATH to root.sh"
+set continue_prompt "Press ENTER to continue..."
+# A yes/no question that nothing answers (root.sh or the wrapper asking something unexpected).
+set question_re {\((y/n|yes/no)\)|\[(y/n|yes/no)\]}
+
+# Wait for the prompt `wanted` and send `answer`. Another wrapper prompt or an unanswered question
+# is unexpected. With `accept` set, questions matching accept_re are answered with ENTER.
+proc step {wanted answer {accept 0}} {
+    global timeout selection_prompt path_prompt continue_prompt question_re accept_re
+    set others [list]
+    foreach prompt [list $selection_prompt $path_prompt $continue_prompt] {
+        if {$prompt ne $wanted} {
+            lappend others $prompt
+        }
+    }
+    set other1 [lindex $others 0]
+    set other2 [lindex $others 1]
+    if {$accept && $accept_re ne ""} {
+        expect {
+            -ex $wanted { send -- $answer }
+            -ex $other1 { fail 4 "unexpected prompt '$other1' while waiting for '$wanted'" }
+            -ex $other2 { fail 4 "unexpected prompt '$other2' while waiting for '$wanted'" }
+            -re $accept_re { send -- "\r"; exp_continue }
+            -re $question_re { fail 4 "unexpected question while waiting for '$wanted'" }
+            timeout { fail 2 "timed out after $timeout seconds waiting for '$wanted'" }
+            eof { fail 3 "the wrapper ended before '$wanted'" }
+        }
+    } else {
+        expect {
+            -ex $wanted { send -- $answer }
+            -ex $other1 { fail 4 "unexpected prompt '$other1' while waiting for '$wanted'" }
+            -ex $other2 { fail 4 "unexpected prompt '$other2' while waiting for '$wanted'" }
+            -re $question_re { fail 4 "unexpected question while waiting for '$wanted'" }
+            timeout { fail 2 "timed out after $timeout seconds waiting for '$wanted'" }
+            eof { fail 3 "the wrapper ended before '$wanted'" }
+        }
+    }
+}
+
+# Everything runs inside catch: with `expect -c`, an uncaught Tcl error (for example a wrapper that
+# cannot be spawned) would otherwise end in expect's interactive mode and exit 0.
+if {[catch {
+    foreach name [list ORACLE_ROOT_WRAPPER ORACLE_ROOT_WRAPPER_TIMEOUT ORACLE_ROOT_SCRIPT_DIR] {
+        if {![info exists env($name)] || $env($name) eq ""} {
+            fail 1 "$name is not set"
+        }
+    }
+    if {![string is integer -strict $env(ORACLE_ROOT_WRAPPER_TIMEOUT)] || $env(ORACLE_ROOT_WRAPPER_TIMEOUT) <= 0} {
+        fail 1 "ORACLE_ROOT_WRAPPER_TIMEOUT must be a positive number of seconds"
+    }
+    set timeout $env(ORACLE_ROOT_WRAPPER_TIMEOUT)
+
+    set accept_re ""
+    if {[info exists env(ORACLE_ROOT_WRAPPER_ACCEPT_RE)]} {
+        set accept_re $env(ORACLE_ROOT_WRAPPER_ACCEPT_RE)
+    }
+    set check_exit 1
+    if {[info exists env(ORACLE_ROOT_WRAPPER_CHECK_EXIT)]} {
+        if {[lsearch -exact [list false no 0] [string tolower $env(ORACLE_ROOT_WRAPPER_CHECK_EXIT)]] >= 0} {
+            set check_exit 0
+        }
+    }
+
+    spawn -noecho $env(ORACLE_ROOT_WRAPPER)
+
+    step $selection_prompt "1\r"
+    step $selection_prompt "1\r"
+    step $path_prompt "$env(ORACLE_ROOT_SCRIPT_DIR)\r"
+    step $continue_prompt "\r" 1
+    step $selection_prompt "x\r"
+
+    # After "x" the wrapper must exit; showing the menu again means the exit was not accepted.
+    expect {
+        -ex $selection_prompt { fail 4 "the wrapper showed '$selection_prompt' again after x" }
+        timeout { fail 2 "timed out after $timeout seconds waiting for the wrapper to exit" }
+        eof {}
+    }
+    set status [wait]
+    if {[lindex $status 2] != 0} {
+        fail 5 "the wrapper could not be run (OS error [lindex $status 3])"
+    }
+    set code [lindex $status 3]
+    if {$code != 0} {
+        if {$check_exit} {
+            fail 5 "the wrapper exited with status $code"
+        }
+        puts "\nWARNING: the wrapper exited with status $code (not checked)"
+    }
+    puts "\nroot wrapper dialogue completed"
+    exit 0
+} err]} {
+    fail 1 "root wrapper dialogue error: $err"
+}

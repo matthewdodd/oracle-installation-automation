@@ -1,51 +1,21 @@
 ---
-- name: Initialize the rootpre.sh script
-  become: yes
+# AIX (oracle_common_run_rootpre): run <ORACLE_HOME>/clone/rootpre.sh as root before the installer.
+# wrapper method: the root wrapper only runs <dir>/root.sh, so rootpre.sh is copied to clone/root.sh first
+# (the original flow). become method: clone/rootpre.sh runs directly. tasks/root_script.yml verifies it.
+
+- name: Copy rootpre.sh to root.sh for the root wrapper
+  when: oracle_common_root_script_method == 'wrapper'
+  become: true
   become_user: "{{ db_owner }}"
-  block:
-    - set_fact:
-        root_pre_folder: "{{ oracle_home }}/clone"
-    
-    - name: Copy rootpre.sh to {{ root_pre_folder }}/root.sh
-      copy:
-        src: "{{ root_pre_folder }}/rootpre.sh"
-        dest: "{{ root_pre_folder }}/root.sh"
-        remote_src: yes
-        mode: '0755'
-   
-- name: Run the rootpre.sh script
-  become: yes
-  become_user: "{{ b_user }}"
-  shell: |
-    set timeout 300
-    spawn /usr/local/bin/root-wrapper
+  ansible.builtin.copy:
+    src: "{{ oracle_database_install_role_oracle_home }}/clone/rootpre.sh"
+    dest: "{{ oracle_database_install_role_oracle_home }}/clone/root.sh"
+    remote_src: true
+    mode: "{{ oracle_database_install_role_modes.root_script_mode }}"
 
-    expect "*Enter your Selection*"
-    
-    send "1\r"
-
-    expect "*Enter your Selection*"
-
-    send "1\r"
-
-    expect "*Enter the PATH to root.sh*"
-
-    send "{{ root_pre_folder }}\r"
-
-    expect "*Press ENTER to continue...*"
-
-    send "\r"
-
-    expect "*Enter your Selection*"
-
-    send "x\r"
-    
-    exit 0
-  args:
-    executable: /usr/bin/expect
-  environment:
-    ROOTPRE_DIR: "{{ root_pre_folder }}"
-  register: rootpre_output
-
-- debug:
-    msg: "{{ rootpre_output }}"
+- name: Run rootpre.sh as root
+  ansible.builtin.include_tasks: root_script.yml
+  vars:
+    __oracle_database_install_role_root_script_dir: "{{ oracle_database_install_role_oracle_home }}/clone"
+    __oracle_database_install_role_root_script_name: rootpre.sh
+    __oracle_database_install_role_root_script_success_regex: "{{ oracle_common_rootpre_success_regex }}"

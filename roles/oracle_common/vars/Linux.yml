@@ -1,0 +1,22 @@
+---
+# Generic Linux (ansible_facts['system'] == 'Linux'). Loaded first for every Linux host;
+# os_family / distribution / distribution-major files (e.g. RedHat.yml, RedHat-9.yml) override it.
+__oracle_common_artifact_platform: LINUX
+__oracle_common_bash_path: /usr/bin/bash
+__oracle_common_expect_path: /usr/bin/expect
+# Command (argument vector) that adds a member to a group; called as: <command...> <member> <group>
+__oracle_common_group_add_command: [/bin/gpasswd, --add]
+# Exact membership lookup through NSS (local files, LDAP, SSSD): <command...> <group>; the regex
+# captures the comma-separated member field of "name:x:gid:a,b,c".
+__oracle_common_group_members_command: [/usr/bin/getent, group]
+__oracle_common_group_members_regex: '\A[^:]*:[^:]*:[^:]*:(.*)\Z'
+__oracle_common_run_rootpre: false
+# No package check unless a more specific file defines one (the original checked RHEL only).
+# The installed packages are read with package_facts (manager below), unless a package query command
+# is set: <command...> is run read-only and the regex (multiline) captures one package name per match.
+__oracle_common_package_manager: ""
+__oracle_common_package_query_command: []
+__oracle_common_package_query_regex: ""
+__oracle_common_prereq_packages: []
+# Central inventory pointer file (Oracle's oraInst.loc location on this platform).
+__oracle_common_inventory_pointer_file: /etc/oraInst.loc

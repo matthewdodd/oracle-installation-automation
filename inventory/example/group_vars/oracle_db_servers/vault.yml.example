@@ -1,0 +1,16 @@
+---
+# EXAMPLE ONLY - fake values, not encrypted, not loaded by Ansible (the .example extension is
+# ignored). To use it for an environment:
+#
+#   cp vault.yml.example inventory/<env>/group_vars/oracle_db_servers/vault.yml
+#   # edit the values, then encrypt with a per-environment vault id:
+#   ansible-vault encrypt --vault-id <env>@prompt inventory/<env>/group_vars/oracle_db_servers/vault.yml
+#   ansible-playbook -i inventory/<env>/hosts.yml --vault-id <env>@prompt oracle_database_install.yml -e target=...
+#
+# Then uncomment the vault_* mappings in main.yml. Never commit an unencrypted vault.yml or a vault
+# password file (.gitignore excludes .vault_pass* / vault_pass*). Rotate with
+#   ansible-vault rekey --vault-id <env>@prompt --new-vault-id <env>@prompt <file>
+# In AAP, attach a Vault credential with the same vault id to the job template instead.
+vault_oracle_notification_webhook_url: https://example.invalid/workflows/FAKE-WEBHOOK-ID
+vault_oracle_artifactory_username: example-user
+vault_oracle_artifactory_password: example-not-a-real-password

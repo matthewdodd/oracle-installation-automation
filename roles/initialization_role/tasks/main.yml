@@ -1,54 +1,105 @@
 ---
+# Requires roles/oracle_common to have run first (OS variables + input validation).
+# Best effort, like the original (which used ignore_errors): a directory that cannot be removed is
+# reported as a WARNING; the staging directories are recreated and verified below.
 - name: Init Clean
-  block:
-    - name: Init Clean
-      include_tasks: init_clean.yml
-  ignore_errors: yes
+  ansible.builtin.include_tasks: init_clean.yml
 
 - name: Add member to group
+  when: oracle_common_manage_group_membership | bool
   block:
     - name: Add member to group
-      include_tasks: group_membership.yml
+      ansible.builtin.include_tasks: group_membership.yml
       loop:
         - "{{ db_owner }}"
-      
+
+# Staging directories: owned by db_owner, never group/world-writable (scripts in them later run as
+# db_owner). follow: false refuses a symlink planted at the path; the result is verified below.
 - name: Run init
-  become: yes
+  become: true
   become_user: "{{ db_owner }}"
   block:
-    - name: Create {{ remote_script_directory }}
+    - name: Inspect the staging base {{ oracle_common_staging_base }}
+      ansible.builtin.stat:
+        path: "{{ oracle_common_staging_base }}"
+        follow: false
+        get_checksum: false
+      register: initialization_role_staging_base_stat
+
+    # A missing parent (by default ORACLE_BASE, <mountpoint>/<db_owner>) is created traversable, as
+    # the ORACLE_HOME creation would; otherwise it would inherit the private staging mode.
+    - name: Inspect the parent of the staging base
+      when: not initialization_role_staging_base_stat.stat.exists
+      ansible.builtin.stat:
+        path: "{{ oracle_common_staging_base | dirname }}"
+        get_checksum: false
+      register: initialization_role_staging_parent_stat
+
+    - name: Create the parent of the staging base
+      when:
+        - not initialization_role_staging_base_stat.stat.exists
+        - not initialization_role_staging_parent_stat.stat.exists
       ansible.builtin.file:
-        path: "{{ remote_script_directory }}"
+        path: "{{ oracle_common_staging_base | dirname }}"
         state: directory
-        mode: "{{ script_permission }}"
+        mode: "{{ oracle_common_modes.oracle_common_staging_parent_mode }}"
 
-    - name: Create roles/oracle_database_install_role/files if not exist
-      copy: 
-        src: roles/oracle_database_install_role/files/ 
-        dest: "{{ remote_script_directory }}/oracle_database_install_role"
-        mode: "{{ script_permission }}"
-
-    - name: Create {{ remote_output_directory }}
+    # An existing base (e.g. a site-provided directory) is used as it is, never re-moded.
+    - name: Create the staging base {{ oracle_common_staging_base }}
+      when: not initialization_role_staging_base_stat.stat.exists
       ansible.builtin.file:
-        path: "{{ remote_output_directory }}"
+        path: "{{ oracle_common_staging_base }}"
         state: directory
-        mode: "{{ script_permission }}"
+        mode: "{{ oracle_common_modes.oracle_common_staging_dir_mode }}"
 
-    - set_fact:
-        oracle_home: "{{ mountpoint }}/{{ db_owner }}/product/{{ database_version }}"
-        install_file_name: "{{ 'AIX' if ansible_distribution == 'AIX' else 'LINUX' }}_binaries.tar.gz"
-        patch_file_name: "{{ 'AIX' if ansible_distribution == 'AIX' else 'LINUX' }}_jan{{ (ansible_date_time.year|string)[-2:] }}.tar.gz"
-        artf_ver: "{{ '19.0.0' if database_version == '19.0.0.0' else ( '12.2.0.1' if database_version == '12.2.0.1' else '12.1.0.2' ) }}"
-        patch_folder_prefix: "/local"
-        b_user: "{{ 'becomeUser' }}"
-        
-    - set_fact:
-        artifactory_repo: "https://artifactory.domain.com/artifactory/release/oracledatabase/{{ artf_ver }}"
-        install_folder_name: "{{ patch_folder_prefix }}/software/{{ database_version }}"
+    - name: Create the script staging directory
+      ansible.builtin.file:
+        path: "{{ oracle_common_remote_script_directory }}"
+        state: directory
+        follow: false
+        mode: "{{ oracle_common_modes.oracle_common_staging_dir_mode }}"
+
+    - name: Create the log staging directory
+      ansible.builtin.file:
+        path: "{{ oracle_common_remote_output_directory }}"
+        state: directory
+        follow: false
+        mode: "{{ oracle_common_modes.oracle_common_staging_dir_mode }}"
+
+    - name: Inspect the staging directories
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+        get_checksum: false
+      loop:
+        - "{{ oracle_common_remote_script_directory }}"
+        - "{{ oracle_common_remote_output_directory }}"
+      register: initialization_role_staging_stat
+
+    - name: Verify the staging directories are private to {{ db_owner }}
+      ansible.builtin.assert:
+        that:
+          - item.stat.isdir | default(false)
+          - not (item.stat.islnk | default(true))
+          - item.stat.pw_name | default('') == db_owner
+          - not (item.stat.wgrp | default(true))
+          - not (item.stat.woth | default(true))
+        fail_msg: >-
+          {{ item.item }} must be a real directory owned by {{ db_owner }} and not group/world-writable
+          (found owner {{ item.stat.pw_name | default('n/a') }}, mode {{ item.stat.mode | default('n/a') }}, link
+          {{ item.stat.islnk | default('n/a') }}). It may have been pre-created by another user; remove it or choose
+          another oracle_common_staging_base.
+        quiet: true
+      # In check mode nothing was created, so only directories that already exist are verified.
+      when: item.stat.exists or not ansible_check_mode
+      loop: "{{ initialization_role_staging_stat.results }}"
+      loop_control:
+        label: "{{ item.item }}"
 
 - name: Add member to group
+  when: oracle_common_manage_group_membership | bool
   block:
     - name: Add member to group
-      include_tasks: group_membership.yml
+      ansible.builtin.include_tasks: group_membership.yml
       loop:
-        - "{{ b_user }}"
+        - "{{ oracle_common_privileged_user }}"

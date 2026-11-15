@@ -1,0 +1,298 @@
+---
+# Variable reference for the shared configuration. Defaults live in ../defaults/main.yml;
+# tasks/preflight.yml applies the format checks that argument specs cannot express.
+argument_specs:
+  main:
+    short_description: Load per-OS variables and validate all inputs before an Oracle install.
+    description:
+      - Loads platform specifics from vars/<system>.yml, <os_family>.yml, <distribution>.yml,
+        <os_family>-<major>.yml and <distribution>-<major>.yml (generic first, specific last).
+      - Validates the job inputs and the environment configuration, reporting every problem at once.
+      - Must run (import_role) before initialization_role and oracle_database_install_role.
+      - Derived paths, overridable but not listed as options because their defaults are templates of
+        the inputs below - oracle_common_staging_base (<mountpoint>/<db_owner>/ansible_staging, owned by db_owner),
+        oracle_common_remote_script_directory (alias remote_script_directory;
+        <oracle_common_staging_base>/ora_ansible_scripts_<DATABASE_NAME>),
+        oracle_common_remote_output_directory (alias remote_output_directory;
+        <oracle_common_staging_base>/oracle_database_install_<DATABASE_NAME>),
+        oracle_common_env_dir (<oracle_common_site_prefix>), oracle_common_env_file (<oracle_common_env_dir>/<DATABASE_NAME>.env)
+        and oracle_common_patch_file_name_fallback (<AIX|LINUX>_jan<YY>.tar.gz, YY from the target's clock; used only while
+        oracle_common_patch_file_name is empty).
+      - Per-OS values (oracle_common_artifact_platform, oracle_common_bash_path, oracle_common_expect_path,
+        oracle_common_group_add_command (argument vector, e.g. [/bin/gpasswd, --add]),
+        oracle_common_group_members_command and oracle_common_group_members_regex (exact membership lookup,
+        e.g. [/usr/bin/getent, group]), oracle_common_run_rootpre, oracle_common_package_manager,
+        oracle_common_package_query_command and oracle_common_package_query_regex (AIX - lslpp -Lc),
+        oracle_common_prereq_packages (RedHat-8/9.yml, AIX.yml; empty skips the check),
+        oracle_common_inventory_pointer_file (/etc/oraInst.loc on Linux and AIX))
+        come from vars/<os>.yml and can be overridden per host or group; they are
+        not listed as options because they are only known after the OS variables are loaded.
+    options:
+      target:
+        type: str
+        required: true
+        description: Comma-separated list of target hosts (AAP survey / extra var).
+      DATABASE_NAME:
+        type: str
+        required: true
+        description: ORACLE_SID. Must fully match [A-Za-z][A-Za-z0-9_]{0,7} (whole value, no whitespace or trailing newline).
+      db_owner:
+        type: str
+        required: true
+        description: OS user that owns the Oracle software (POSIX user name).
+      database_version:
+        type: str
+        required: true
+        description:
+          - Oracle release to install. Allowed values are the keys of oracle_common_artifactory_version_map
+            (19.0.0.0, 12.2.0.1, 12.1.0.2 by default). There is no fallback; 12.x prints a desupport warning.
+      mountpoint:
+        type: str
+        required: true
+        description: Absolute base filesystem. ORACLE_BASE is <mountpoint>/<db_owner>.
+      oracle_common_artifactory_url:
+        type: str
+        required: true
+        description:
+          - http(s) URL of the repository folder holding one sub-folder per Oracle release,
+            e.g. https://artifactory.example.com/artifactory/release/oracledatabase.
+          - Do not embed credentials; use oracle_common_artifactory_username/password.
+      oracle_common_site_prefix:
+        type: str
+        required: true
+        description: Absolute site directory for <DB>.env files and software staging (<prefix>/software/<DATABASE_NAME>_<version>).
+      oracle_common_root_wrapper_path:
+        type: str
+        description:
+          - Absolute path of the privileged wrapper that runs root.sh / rootpre.sh.
+          - Required while oracle_common_root_script_method is wrapper (the default); checked by tasks/preflight.yml.
+      oracle_common_group_name:
+        type: str
+        description:
+          - OS group db_owner and b_user are added to. Required while oracle_common_manage_group_membership is true.
+          - Defaults to GROUP_NAME, the original input name, which keeps working.
+      GROUP_NAME:
+        type: str
+        description: Original name of oracle_common_group_name, still accepted.
+      oracle_common_manage_group_membership:
+        type: bool
+        default: true
+        description: Add db_owner and b_user to oracle_common_group_name.
+      oracle_common_group_membership_become_user:
+        type: str
+        default: root
+        description: Account (through become) that runs the group change command; the original used sudo, i.e. root.
+      oracle_common_privileged_user:
+        type: str
+        default: root
+        description: Privileged account used through become for root-level work. Defaults to b_user when that is set.
+      b_user:
+        type: str
+        description: Original name of oracle_common_privileged_user, still accepted.
+      oracle_common_staging_base:
+        type: str
+        description:
+          - Base directory for the per-database staging directories (default <mountpoint>/<db_owner>/ansible_staging,
+            created as db_owner when missing). Avoid world-writable locations such as /tmp; the staging directories are
+            verified to be owned by db_owner and not group/world-writable either way.
+      oracle_common_script_permission:
+        type: str
+        default: "0750"
+        description:
+          - Mode of the staged scripts (owner db_owner). Group/world-writable modes such as 0777 are rejected.
+          - Defaults to script_permission when that is set.
+      script_permission:
+        type: str
+        description: Original name of oracle_common_script_permission, still accepted.
+      oracle_common_staging_dir_mode:
+        type: str
+        default: "0750"
+        description: Mode of the staging base and staging directories (owner db_owner). Group/world-writable modes are rejected.
+      oracle_common_staging_parent_mode:
+        type: str
+        default: "0755"
+        description: Mode of the parent of the staging base (by default ORACLE_BASE) when it has to be created. Not world-writable.
+      oracle_common_artifactory_version_map:
+        type: dict
+        description: Map of database_version to repository folder name; also the database_version allow-list.
+      oracle_common_desupported_versions:
+        type: list
+        elements: str
+        description: Versions that are accepted with a desupport warning.
+      oracle_common_artifactory_username:
+        type: str
+        default: ""
+        description: Repository user (secret; from Ansible Vault or an AAP credential). Basic auth is forced only when set.
+      oracle_common_artifactory_password:
+        type: str
+        default: ""
+        no_log: true
+        description: Repository password or token (secret; from Ansible Vault or an AAP credential).
+      oracle_common_artifactory_use_proxy:
+        type: bool
+        default: false
+        description: Download through oracle_common_https_proxy.
+      oracle_common_artifactory_validate_certs:
+        type: bool
+        default: true
+        description: Verify the repository TLS certificate.
+      oracle_common_artifactory_ca_path:
+        type: str
+        default: ""
+        description: Optional PEM CA bundle on the target host used to verify the repository (exported as SSL_CERT_FILE).
+      oracle_common_artifact_checksums:
+        type: dict
+        default: {}
+        description:
+          - Expected checksum per artifact file name in get_url format, keyed by file name (for example
+            LINUX_binaries.tar.gz mapped to sha256 and its hex digest).
+          - Each value is <algorithm>:<hex digest> where the digest is hex (either case) of exactly the algorithm's length
+            (md5 32, sha1 40, sha224 56, sha256 64, sha384 96, sha512 128) and not all zeros, or
+            <algorithm>:<http(s) URL of a checksum file>. Other values are rejected before the host is changed.
+          - In both forms <algorithm> must be one of md5, sha1, sha224, sha256, sha384 or sha512, written in lowercase.
+      oracle_common_artifact_checksum_required:
+        type: bool
+        default: true
+        description:
+          - Require a checksum for every downloaded artifact (binaries and patch bundle); the run stops before changing the
+            host when one is missing. Set false only knowingly (a warning is shown).
+      oracle_common_patch_file_name:
+        type: str
+        default: ""
+        description:
+          - Patch bundle file name in the repository, e.g. LINUX_jan26.tar.gz.
+          - Empty falls back to <AIX|LINUX>_jan<YY>.tar.gz for the current year on the target (with a warning).
+      oracle_common_https_proxy:
+        type: str
+        default: ""
+        description: Optional HTTPS proxy URL. Empty sets no proxy variables.
+      oracle_common_root_script_method:
+        type: str
+        choices: [wrapper, become]
+        description:
+          - How root.sh (and rootpre.sh on AIX) run. wrapper (default) drives the site root wrapper with expect, as the
+            original did; become runs the script directly through become as oracle_common_root_script_become_user.
+          - Defaults to oracle_root_script_method, which is accepted as a short alias.
+      oracle_root_script_method:
+        type: str
+        choices: [wrapper, become]
+        description: Short alias of oracle_common_root_script_method.
+      oracle_common_root_wrapper_timeout:
+        type: int
+        default: 300
+        description: Seconds the expect dialogue waits for each root wrapper prompt (including while root.sh runs).
+      oracle_common_root_wrapper_check_exit_status:
+        type: bool
+        default: true
+        description: Fail when the root wrapper exits non-zero after the dialogue.
+      oracle_common_root_wrapper_accept_default_regex:
+        type: str
+        description:
+          - Tcl regex of root.sh questions that are answered with ENTER (root.sh's default) while it runs under the wrapper;
+            any other y/n question fails the run. Empty answers none.
+      oracle_common_root_script_become_user:
+        type: str
+        default: root
+        description: Account that runs the root scripts when oracle_common_root_script_method is become.
+      oracle_common_root_script_args:
+        type: list
+        elements: str
+        default: []
+        description: Extra arguments for the root scripts when oracle_common_root_script_method is become.
+      oracle_common_root_script_stdin:
+        type: str
+        description: Standard input of the root scripts with the become method (default four newlines, accepting defaults).
+      oracle_common_root_script_failure_regex:
+        type: str
+        description: Python regex that must not match the root script / wrapper output (empty disables the check).
+      oracle_common_root_sh_success_regex:
+        type: str
+        description:
+          - Python regex that must match the root.sh / wrapper output (default "Finished running generic part of root script";
+            empty disables the check, e.g. for a wrapper that hides the root.sh output).
+      oracle_common_rootpre_success_regex:
+        type: str
+        default: ""
+        description: Python regex that must match the rootpre.sh output on AIX (empty, the default, disables the check).
+      oracle_common_notification_webhook_url:
+        type: str
+        no_log: true
+        description: Teams Workflows webhook URL (secret). Empty disables notifications. Alias notification_webhook_url.
+      oracle_common_job_url_base:
+        type: str
+        default: ""
+        description: Base of the AAP job link, e.g. https://aap.example.com/#/jobs/playbook/ (the job id is appended).
+      oracle_common_notification_delegate_to:
+        type: str
+        default: ""
+        description: Host that sends the card. Empty means each target host sends its own.
+      oracle_common_notification_validate_certs:
+        type: bool
+        default: true
+        description: Verify the webhook endpoint TLS certificate.
+      oracle_common_notification_ca_path:
+        type: str
+        default: ""
+        description: Optional PEM CA bundle used to verify the webhook endpoint.
+      oracle_common_notification_timeout:
+        type: int
+        default: 30
+        description: Webhook request timeout in seconds.
+      oracle_common_notification_error_max_length:
+        type: int
+        default: 500
+        description: A failure card shows the failed stage, task and error message, cut to this many characters.
+      oracle_common_notification_colours:
+        type: dict
+        description: Adaptive Card colour per state (keys start, success, fail).
+      oracle_common_supported_systems:
+        type: list
+        elements: str
+        description: Kernel names (ansible_facts['system']) that are supported; each needs vars/<system>.yml.
+  notify:
+    short_description: Send a best-effort Teams Workflows card for the job state.
+    description:
+      - Skipped when oracle_common_notification_webhook_url is empty. Never fails the run.
+    options:
+      call:
+        type: str
+        required: true
+        description: Job state, start | success | fail (any other value is treated as fail).
+      oracle_common_failure:
+        type: dict
+        description:
+          - Set by tasks/failure_record.yml (stage, task, msg). A failure card shows the failed stage and task and the
+            error message (cut to oracle_common_notification_error_max_length characters).
+  failure_record:
+    short_description: Record why a playbook stage failed (first task of a rescue section).
+    description:
+      - Sets the fact oracle_common_failure (stage, task, msg) from ansible_failed_task.name and ansible_failed_result.msg,
+        before a rollback or cleanup with rescues of their own can replace them.
+    options:
+      oracle_common_failure_stage:
+        type: str
+        required: true
+        description: Name of the failed stage, e.g. Initialize, Install.
+  failure_report:
+    short_description: Send the failure notification (best effort) and fail the host with the original error.
+    description:
+      - Records the failure first unless tasks/failure_record.yml already did for this stage.
+      - The notification never fails the run; the final error names the stage, the failed task and its message.
+    options:
+      oracle_common_failure_stage:
+        type: str
+        required: true
+        description: Name of the failed stage, e.g. Initialize, Install.
+  remove_staging:
+    short_description: Remove one staging path as the connection user, else as db_owner (best effort).
+    description:
+      - A path neither account can remove is reported as a WARNING with the error; the run continues, as on main.
+    options:
+      oracle_common_remove_path:
+        type: str
+        required: true
+        description: Absolute path to remove.
+      db_owner:
+        type: str
+        required: true
+        description: OS user that owns the staging directories.

@@ -1,0 +1,23 @@
+---
+# Records the state of everything the playbook manages on a host into molecule_snapshots[<molecule_snapshot_name>]:
+# every path under the mountpoint (ORACLE_BASE, homes, inventories, staging), the
+# site prefix (environment files, software staging) and the central inventory pointer, with type, mode,
+# owner, group, size and modification time, plus a SHA-256 of every regular file.
+- name: Record the host state - {{ molecule_snapshot_name }}
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      find {{ __molecule_snapshot_paths | map('quote') | join(' ') }} -printf '%p|%y|%m|%u|%g|%s|%T@\n' | LC_ALL=C sort;
+      find {{ __molecule_snapshot_paths | map('quote') | join(' ') }} -type f -exec sha256sum {} + | LC_ALL=C sort -k 2
+    executable: /bin/bash
+  vars:
+    __molecule_snapshot_paths:
+      - "{{ mountpoint }}"
+      - "{{ oracle_common_site_prefix }}"
+      - /etc/oraInst.loc
+  register: molecule_snapshot_result
+  changed_when: false
+
+- name: Keep the host state - {{ molecule_snapshot_name }}
+  ansible.builtin.set_fact:
+    molecule_snapshots: "{{ molecule_snapshots | default({}) | combine({molecule_snapshot_name: molecule_snapshot_result.stdout_lines}) }}"

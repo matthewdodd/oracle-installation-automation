@@ -1,0 +1,74 @@
+---
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    # Blocking: the baseline is clean (ansible-lint production, yamllint, shellcheck, syntax-check).
+    # Making this job a required status check on main is a branch-protection setting (plan step 30).
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.15"
+          cache: pip
+
+      - name: Install tooling
+        run: |
+          pip install -r requirements.txt
+          ansible-galaxy collection install -r collections/requirements.yml
+
+      - name: yamllint
+        if: always()
+        run: yamllint .
+
+      - name: Committed vault files are encrypted
+        if: always()
+        # Fails on any tracked vault.yml / vault.yaml, or any file under group_vars/ or host_vars/ named
+        # (or inside a directory named) vault*, that lacks the "$ANSIBLE_VAULT;" header. *.example is exempt.
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=0
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              *.example) continue ;;
+            esac
+            case "/$path" in
+              */vault.yml | */vault.yaml | */group_vars/vault* | */host_vars/vault* | */group_vars/*/vault* | */host_vars/*/vault*) ;;
+              *) continue ;;
+            esac
+            first_line=""
+            IFS= read -r first_line < "$path" || true
+            if [[ "$first_line" != "\$ANSIBLE_VAULT;"* ]]; then
+              echo "::error file=${path}::${path} is not encrypted with ansible-vault (no \$ANSIBLE_VAULT; header)"
+              status=1
+            fi
+          done < <(git ls-files -z)
+          exit "$status"
+
+      - name: shellcheck
+        if: always()
+        run: shellcheck roles/*/files/*.bash
+
+      - name: ansible-playbook --syntax-check
+        if: always()
+        # `target` is required to template the second play's `hosts:`; any value works here.
+        run: ansible-playbook -i inventory/example/hosts.yml --syntax-check oracle_database_install.yml -e target=dbhost01.example.com
+
+      - name: ansible-lint
+        if: always()
+        run: ansible-lint
+
+      - name: Permission-mode regression test (controller only)
+        if: always()
+        run: ansible-playbook -i localhost, tests/mode_validation.yml

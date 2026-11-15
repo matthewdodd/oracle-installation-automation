@@ -1,73 +1,148 @@
 ---
+# Downloads one artifact into a fresh download directory and, for the patch bundle, extracts it and the
+# archives inside it. Include variables:
+#   __oracle_database_install_role_artifact      file name in the repository (binaries or patch bundle)
+#   __oracle_database_install_role_download_dir  download directory (oracle_database_install_role_install_folder_name)
+#   __oracle_database_install_role_extract       true for the patch bundle (the original patch == "yes")
+# Security: TLS verified (oracle_common_artifactory_validate_certs, optional CA bundle), checksum
+# verified (oracle_common_artifact_checksums; required by default), credentials only from Vault
+# inputs with no_log, and every file and directory owned by db_owner and its primary group with
+# no group/world write access (the original used 0777).
 - name: Copy files to server
-  become: yes
-  become_user: "{{ b_user }}"
+  become: true
+  become_user: "{{ oracle_common_privileged_user }}"
+  vars:
+    __oracle_database_install_role_owner_group: "{{ oracle_database_install_role_safety.owner_group }}"
+    __oracle_database_install_role_checksum: >-
+      {{ oracle_common_artifact_checksums[__oracle_database_install_role_artifact] | default('') }}
   block:
-    - set_fact:
-        download_dir: "{{ temp_dir }}"
-
-    - name: Remove prior {{ download_dir }}
-      file:
-        state: absent
-        path: "{{ download_dir }}/"
-
-    - name: Create {{ download_dir }}
+    - name: Remove the previous download directory
       ansible.builtin.file:
-        path: "{{ download_dir }}"
-        state: directory
-        mode: '0777'
-
-    - name: Download {{ artf_file_name }} from {{ artifactory_repo }} to {{ download_dir }}
-      ansible.builtin.get_url:
-        url: '{{ artifactory_repo }}/{{ artf_file_name }}'
-        dest: '{{ download_dir }}/{{ artf_file_name }}'
-        validate_certs: no
-        force_basic_auth: yes
-        mode: '0777'
-        tmp_dest: "{{ download_dir }}"
-        use_proxy: no
-
-    - name: Extract all files into {{ download_dir }}
-      ansible.builtin.unarchive:
-        remote_src: yes
-        src: '{{ download_dir }}/{{ artf_file_name }}'
-        dest: '{{ download_dir }}'
-      when: patch == "yes"
-      
-    - name: Remove {{ artf_file_name }}
-      file:
         state: absent
-        path: '{{ download_dir }}/{{ artf_file_name }}'
-      ignore_errors: true
-      when: patch == "yes"
+        path: "{{ __oracle_database_install_role_download_dir }}/"
 
-    - name : Find all files in "{{ download_dir }}"
-      find:
-        paths: "{{ download_dir }}"
-        patterns: '*.zip,*.tar.gz'
-      register: output
-      when: patch == "yes"
-    
-    - name: Extract all files into {{ download_dir }}
-      ansible.builtin.unarchive:
-        remote_src: yes
-        src: "{{ item.path }}"
-        dest: "{{ download_dir }}"
-      with_items: "{{ output.files }}"
-      when: patch == "yes"
-      
-    - name: Remove zipped files
-      file:
-        state: absent
-        path: "{{ item.path }}"
-      with_items: "{{ output.files }}"
-      ignore_errors: true
-      when: patch == "yes"
+    # The parent (e.g. <site prefix>/software) is shared by every database on the host, possibly with
+    # different owners: create it traversable and root-writable only when missing, never re-mode it.
+    - name: Inspect the parent of the download directory
+      ansible.builtin.stat:
+        path: "{{ __oracle_database_install_role_download_dir | dirname }}"
+        get_checksum: false
+      register: oracle_database_install_role_download_parent
 
-    - name: Correct Permissions on {{ download_dir }}
-      file:
-        path: "{{ download_dir }}"
-        mode: '0777'
+    - name: Create the parent of the download directory
+      when: not oracle_database_install_role_download_parent.stat.exists
+      ansible.builtin.file:
+        path: "{{ __oracle_database_install_role_download_dir | dirname }}"
         state: directory
-        recurse: yes
-      when: patch == "yes"
+        mode: "{{ oracle_database_install_role_modes.download_parent_mode }}"
+
+    - name: Create the download directory
+      ansible.builtin.file:
+        path: "{{ __oracle_database_install_role_download_dir }}"
+        state: directory
+        owner: "{{ db_owner }}"
+        group: "{{ __oracle_database_install_role_owner_group }}"
+        mode: "{{ oracle_database_install_role_modes.download_dir_mode }}"
+
+    - name: Warn about an artifact without checksum {{ __oracle_database_install_role_artifact }}
+      when: __oracle_database_install_role_checksum | length == 0
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: no checksum for {{ __oracle_database_install_role_artifact }} in oracle_common_artifact_checksums
+          (oracle_common_artifact_checksum_required is false); its integrity is not verified.
+
+    # The repository URL is not shown in task names and the download runs with no_log: the URL or the
+    # credentials (oracle_common_artifactory_username/password, from Ansible Vault) can be secrets.
+    - name: Download the artifact {{ __oracle_database_install_role_artifact }}
+      block:
+        - name: Download from the repository {{ __oracle_database_install_role_artifact }}
+          ansible.builtin.get_url:
+            url: '{{ oracle_database_install_role_artifactory_repo }}/{{ __oracle_database_install_role_artifact }}'
+            dest: '{{ __oracle_database_install_role_download_dir }}/{{ __oracle_database_install_role_artifact }}'
+            checksum: "{{ __oracle_database_install_role_checksum if __oracle_database_install_role_checksum | length > 0 else omit }}"
+            validate_certs: "{{ oracle_common_artifactory_validate_certs | bool }}"
+            url_username: "{{ oracle_common_artifactory_username if oracle_common_artifactory_username | length > 0 else omit }}"
+            url_password: "{{ oracle_common_artifactory_password if oracle_common_artifactory_password | length > 0 else omit }}"
+            # Basic auth is only forced when credentials are supplied (inputs, or embedded in the URL).
+            force_basic_auth: >-
+              {{ oracle_common_artifactory_username | length > 0
+                 or (oracle_database_install_role_artifactory_repo | urlsplit('username') | default('', true) | length > 0) }}
+            owner: "{{ db_owner }}"
+            group: "{{ __oracle_database_install_role_owner_group }}"
+            mode: "{{ oracle_database_install_role_modes.download_file_mode }}"
+            tmp_dest: "{{ __oracle_database_install_role_download_dir }}"
+            use_proxy: "{{ oracle_common_artifactory_use_proxy | bool }}"
+          environment: >-
+            {{ ({'https_proxy': oracle_common_https_proxy, 'HTTPS_PROXY': oracle_common_https_proxy,
+                 'http_proxy': oracle_common_https_proxy, 'HTTP_PROXY': oracle_common_https_proxy}
+                if (oracle_common_artifactory_use_proxy | bool) and oracle_common_https_proxy | length > 0 else {})
+               | combine({'SSL_CERT_FILE': oracle_common_artifactory_ca_path}
+                         if oracle_common_artifactory_ca_path | length > 0 else {}) }}
+          no_log: true
+      rescue:
+        - name: Report the failed download {{ __oracle_database_install_role_artifact }}
+          ansible.builtin.fail:
+            msg: >-
+              Download of {{ __oracle_database_install_role_artifact }} failed
+              (HTTP {{ ansible_failed_result.status_code | default('n/a') }}):
+              {{ (__oracle_database_install_role_download_error | replace(oracle_common_artifactory_password, '<password>'))
+                 if oracle_common_artifactory_password | length > 0 else __oracle_database_install_role_download_error }}
+          vars:
+            __oracle_database_install_role_download_error: >-
+              {{ ansible_failed_result.msg | default('unknown error') | string
+                 | replace(oracle_database_install_role_artifactory_repo, '<repository URL>') }}
+
+    - name: Extract the patch bundle and the archives inside it
+      when: __oracle_database_install_role_extract | bool
+      block:
+        - name: Extract the patch bundle {{ __oracle_database_install_role_artifact }}
+          ansible.builtin.unarchive:
+            remote_src: true
+            src: '{{ __oracle_database_install_role_download_dir }}/{{ __oracle_database_install_role_artifact }}'
+            dest: '{{ __oracle_database_install_role_download_dir }}'
+            owner: "{{ db_owner }}"
+            group: "{{ __oracle_database_install_role_owner_group }}"
+
+        # state: absent already succeeds when the file is gone (the only expected "error" the original
+        # ignored); any other failure (I/O, permissions) is a real fault and is no longer hidden.
+        - name: Remove the extracted patch bundle {{ __oracle_database_install_role_artifact }}
+          ansible.builtin.file:
+            state: absent
+            path: '{{ __oracle_database_install_role_download_dir }}/{{ __oracle_database_install_role_artifact }}'
+
+        - name: Find the archives inside the patch bundle
+          ansible.builtin.find:
+            paths: "{{ __oracle_database_install_role_download_dir }}"
+            patterns: "{{ oracle_database_install_role_patch_inner_archive_patterns }}"
+          register: oracle_database_install_role_patch_archives
+          when: oracle_database_install_role_patch_inner_archive_patterns | length > 0
+
+        - name: Extract the archives inside the patch bundle
+          ansible.builtin.unarchive:
+            remote_src: true
+            src: "{{ item.path }}"
+            dest: "{{ __oracle_database_install_role_download_dir }}"
+            owner: "{{ db_owner }}"
+            group: "{{ __oracle_database_install_role_owner_group }}"
+          loop: "{{ oracle_database_install_role_patch_archives.files | default([]) }}"
+          loop_control:
+            label: "{{ item.path }}"
+
+        - name: Remove the extracted archives
+          ansible.builtin.file:
+            state: absent
+            path: "{{ item.path }}"
+          loop: "{{ oracle_database_install_role_patch_archives.files | default([]) }}"
+          loop_control:
+            label: "{{ item.path }}"
+
+        # Replaces the original recursive 0777: db_owner owns the tree, executable bits from the
+        # archives are kept, group gets read, others nothing.
+        - name: Correct the permissions of the extracted patches
+          ansible.builtin.file:
+            path: "{{ __oracle_database_install_role_download_dir }}"
+            state: directory
+            recurse: true
+            owner: "{{ db_owner }}"
+            group: "{{ __oracle_database_install_role_owner_group }}"
+            mode: "{{ oracle_database_install_role_modes.extracted_mode }}"
