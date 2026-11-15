@@ -13,6 +13,10 @@
 # middle or at the end of a path is rejected, while names that merely contain dots are accepted, both in
 # the oracle_common preflight and in every path checked by the oracle_database_install_role preflight.
 #
+# It also covers the artifact checksum rules (validate_security_inputs.yml): exact hex digest length per algorithm
+# (either case) or an http(s) checksum-file URL; all-zero placeholder digests, wrong lengths, non-hex digits and
+# other URL schemes are rejected, and the errors name the artifact without printing the value.
+#
 # It also covers the Red Hat family release guard in roles/oracle_common/tasks/os_vars.yml: EL7 (any
 # os_family RedHat distribution with major release 7) is refused before any OS file is loaded, while
 # RHEL 8/9, rebuilds such as Rocky and Oracle Linux 8/9, and AIX are accepted with the prerequisite list of their release file.
@@ -156,6 +160,79 @@
       - name: installer names that merely contain dots
         paths: {response_file: /u01/oracle/19.0.0.0/db..rsp, response_extra_file: /u01/.hidden/..extra.rsp}
         rejected: []
+    # Artifact checksums (validate_security_inputs.yml): the baseline is the valid pair from vars/mode_validation.yml
+    # (repeated here, as the cases replace oracle_common_artifact_checksums); each case adds or replaces entries and
+    # lists the keys rejected as malformed (format) or as an all-zero placeholder (placeholder).
+    checksum_validation_baseline:
+      LINUX_binaries.tar.gz: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      LINUX_jan26.tar.gz: "sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+    checksum_cases:
+      - {name: valid baseline, checksums: {}}
+      - name: every algorithm with its exact length accepted
+        checksums:
+          md5.tar.gz: "md5:{{ '0123456789abcdef' * 2 }}"
+          sha1.tar.gz: "sha1:{{ '0123456789' * 4 }}"
+          sha224.tar.gz: "sha224:{{ 'abcdef01' * 7 }}"
+          sha256.tar.gz: "sha256:{{ '9876543210fedcba' * 4 }}"
+          sha384.tar.gz: "sha384:{{ '0123456789abcdef' * 6 }}"
+          sha512.tar.gz: "sha512:{{ 'fedcba9876543210' * 8 }}"
+      - name: mixed and upper case hex accepted
+        checksums:
+          mixed256.tar.gz: "sha256:{{ '0123456789AbCdEf' * 4 }}"
+          upper512.tar.gz: "sha512:{{ '0123456789ABCDEF' * 8 }}"
+          upper_md5.tar.gz: "md5:{{ 'ABCDEF0123456789' * 2 }}"
+      - name: checksum file URL accepted
+        checksums:
+          https.tar.gz: sha256:https://artifactory.example.com/artifactory/release/oracledatabase/https.tar.gz.sha256
+          http.tar.gz: sha512:http://127.0.0.1:8080/oracledatabase/http.tar.gz.sha512
+          LINUX_binaries.tar.gz: md5:https://artifactory.example.com/artifactory/release/LINUX_binaries.tar.gz.md5
+      - name: all-zero digests rejected as placeholders
+        checksums:
+          LINUX_binaries.tar.gz: "sha256:{{ '0' * 64 }}"
+          LINUX_jan26.tar.gz: "md5:{{ '0' * 32 }}"
+          zero1.tar.gz: "sha1:{{ '0' * 40 }}"
+          zero224.tar.gz: "sha224:{{ '0' * 56 }}"
+          zero384.tar.gz: "sha384:{{ '0' * 96 }}"
+          zero512.tar.gz: "sha512:{{ '0' * 128 }}"
+          zero_short.tar.gz: "sha256:0000"
+        placeholder: [LINUX_binaries.tar.gz, LINUX_jan26.tar.gz, zero1.tar.gz, zero224.tar.gz, zero384.tar.gz, zero512.tar.gz,
+                      zero_short.tar.gz]
+      - name: wrong digest length rejected
+        checksums:
+          short256.tar.gz: "sha256:{{ 'a' * 63 }}"
+          long256.tar.gz: "sha256:{{ 'a' * 65 }}"
+          md5_as_sha256.tar.gz: "md5:{{ 'a' * 64 }}"
+          sha256_as_sha512.tar.gz: "sha512:{{ 'a' * 64 }}"
+          sha1_as_md5.tar.gz: "sha1:{{ 'a' * 32 }}"
+          empty.tar.gz: "sha256:"
+        format: [short256.tar.gz, long256.tar.gz, md5_as_sha256.tar.gz, sha256_as_sha512.tar.gz, sha1_as_md5.tar.gz, empty.tar.gz]
+      - name: non-hex digests rejected
+        checksums:
+          letter_g.tar.gz: "sha256:{{ 'a' * 63 }}g"
+          dashes.tar.gz: "md5:{{ '0123-4567' }}{{ 'a' * 23 }}"
+          newline.tar.gz: "sha256:{{ 'a' * 64 }}\n"
+          space.tar.gz: "sha256:{{ 'a' * 32 }} {{ 'a' * 31 }}"
+        format: [letter_g.tar.gz, dashes.tar.gz, newline.tar.gz, space.tar.gz]
+      - name: other URL schemes and garbage rejected
+        checksums:
+          ftp.tar.gz: sha256:ftp://artifactory.example.com/ftp.tar.gz.sha256
+          file.tar.gz: sha256:file:///etc/ftp.tar.gz.sha256
+          upper_scheme.tar.gz: sha256:HTTPS://artifactory.example.com/upper.sha256
+          bare_scheme.tar.gz: "sha256:https://"
+          url_space.tar.gz: "sha256:https://artifactory.example.com/a b.sha256"
+          garbage.tar.gz: sha256:not-a-digest
+          no_algorithm.tar.gz: "{{ 'a' * 64 }}"
+          unknown_algorithm.tar.gz: "sha3:{{ 'a' * 64 }}"
+          upper_algorithm.tar.gz: "SHA256:{{ 'a' * 64 }}"
+          change_me.tar.gz: <CHANGE_ME>
+        format: [ftp.tar.gz, file.tar.gz, upper_scheme.tar.gz, bare_scheme.tar.gz, url_space.tar.gz, garbage.tar.gz, no_algorithm.tar.gz,
+                 unknown_algorithm.tar.gz, upper_algorithm.tar.gz, change_me.tar.gz]
+      # The example inventory ships placeholders that the validation must reject.
+      - name: inventory/example placeholders rejected
+        checksums: >-
+          {{ (lookup('ansible.builtin.file', playbook_dir ~ '/../inventory/example/group_vars/oracle_db_servers/main.yml')
+              | from_yaml).oracle_common_artifact_checksums }}
+        format: [LINUX_binaries.tar.gz, LINUX_jan26.tar.gz]
     # Simulated facts for the os_vars.yml release guard. AIX is not last, so the Linux variables are loaded
     # again at the end (the file-mode block above already ran; this keeps the play state Linux-like).
     platform_cases:
@@ -285,6 +362,17 @@
             path: "{{ mode_validation_tmp.path }}"
             state: absent
           when: mode_validation_tmp.path is defined
+
+    - name: Run the artifact checksum cases
+      ansible.builtin.include_tasks: tasks/checksum_case.yml
+      loop: "{{ checksum_cases }}"
+      loop_control:
+        loop_var: checksum_case
+        label: "{{ checksum_case.name }}"
+
+    - name: Restore the baseline checksums
+      ansible.builtin.set_fact:
+        oracle_common_artifact_checksums: "{{ checksum_validation_baseline }}"
 
     - name: Run the Red Hat family release guard cases
       ansible.builtin.include_tasks: tasks/platform_case.yml

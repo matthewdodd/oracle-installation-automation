@@ -1,6 +1,6 @@
 ---
 # Example environment configuration for the database servers. Copy inventory/example/ to
-# inventory/<env>/ and replace every example.com value. Variable reference:
+# inventory/<env>/ and replace every example.com value and <CHANGE_ME> placeholder. Variable reference:
 # roles/oracle_common/meta/argument_specs.yml (defaults in roles/oracle_common/defaults/main.yml).
 
 # --- Connection ---------------------------------------------------------------------------
@@ -50,10 +50,14 @@ oracle_common_group_name: oracle_automation
 
 # --- Download integrity (required by default) ----------------------------------------------
 # One entry per artifact that is downloaded: the binaries (<AIX|LINUX>_binaries.tar.gz) and the
-# patch bundle. Digests from a trusted source (repository checksum view / release record).
+# patch bundle. Replace each <CHANGE_ME> with "sha256:<64 hex digest>" (or another get_url algorithm with
+# its exact digest length, or "sha256:https://<URL of a checksum file>") from a trusted source (repository
+# checksum view / release record). The validation rejects <CHANGE_ME> and all-zero digests.
 oracle_common_artifact_checksums:
-  LINUX_binaries.tar.gz: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-  LINUX_jan26.tar.gz: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  # Digest of the binaries archive, "sha256:<64 hex characters>"
+  LINUX_binaries.tar.gz: "<CHANGE_ME>"
+  # Digest of the patch bundle (the name must match oracle_common_patch_file_name or the date-derived default)
+  LINUX_jan26.tar.gz: "<CHANGE_ME>"
 # oracle_common_artifact_checksum_required: true
 
 # --- Staging and permissions ----------------------------------------------------------------

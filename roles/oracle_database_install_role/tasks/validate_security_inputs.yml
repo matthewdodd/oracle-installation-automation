@@ -40,7 +40,8 @@
 
 # Secure defaults that cannot be switched off by accident: no group/world-writable modes (0777 is
 # rejected, the inventory directory may be group-writable for the oinstall-style group), and a
-# checksum for every artifact unless oracle_common_artifact_checksum_required is explicitly false.
+# checksum for every artifact unless oracle_common_artifact_checksum_required is explicitly false, and every
+# checksum well formed (exact digest length per algorithm, or an http(s) checksum-file URL) and not an all-zero placeholder.
 - name: Validate the permission and download integrity inputs
   ansible.builtin.assert:
     that: __oracle_database_install_role_security_errors | length == 0
@@ -69,6 +70,13 @@
     __oracle_database_install_role_missing_checksum_msg: >-
       no checksum for \1 in oracle_common_artifact_checksums (required: add "\1: sha256:<digest>", or set
       oracle_common_artifact_checksum_required=false to download it unverified)
+    # Checksum errors name the artifact (the key) only, never the value.
+    __oracle_database_install_role_bad_checksum_msg: >-
+      oracle_common_artifact_checksums[\1] must be <algorithm>:<hex digest> with the digest length of the algorithm
+      (md5 32, sha1 40, sha224 56, sha256 64, sha384 96, sha512 128 hex digits), or <algorithm>:<http(s) URL of a checksum file>
+    __oracle_database_install_role_zero_checksum_msg: >-
+      oracle_common_artifact_checksums[\1] is an all-zero placeholder digest: replace it with the real digest of the artifact
+      from a trusted source
     __oracle_database_install_role_security_errors: >-
       {{ (__oracle_database_install_role_mode_checks
           | rejectattr('value', 'match', __oracle_common_re_octal_mode)
@@ -94,7 +102,13 @@
             | list
             if oracle_common_artifact_checksum_required | bool else [])
          + (__oracle_database_install_role_checksums | dict2items
+            | rejectattr('value', 'match', __oracle_common_re_checksum_zero)
             | rejectattr('value', 'match', __oracle_common_re_checksum)
             | map(attribute='key')
-            | map('regex_replace', '^(.*)$', 'oracle_common_artifact_checksums[\1] must look like <md5|sha1|sha224|sha256|sha384|sha512>:<digest or URL>')
+            | map('regex_replace', '^(.*)$', __oracle_database_install_role_bad_checksum_msg)
+            | list)
+         + (__oracle_database_install_role_checksums | dict2items
+            | selectattr('value', 'match', __oracle_common_re_checksum_zero)
+            | map(attribute='key')
+            | map('regex_replace', '^(.*)$', __oracle_database_install_role_zero_checksum_msg)
             | list) }}

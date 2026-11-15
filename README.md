@@ -225,7 +225,7 @@ There is no safe generic default for these, so none is shipped.
 | `oracle_common_site_prefix` | always | Absolute site directory (the original `/local`). It holds `<DB>.env` and `software/<DB>_<version>/`. |
 | `oracle_common_root_wrapper_path` | `oracle_common_root_script_method: wrapper` (default) | Absolute path of the site root wrapper (the original `/usr/local/bin/root-wrapper`). |
 | `oracle_common_group_name` (alias `GROUP_NAME`) | `oracle_common_manage_group_membership: true` (default) | OS group that `db_owner` and the privileged user join; it was a placeholder name in the original code. |
-| `oracle_common_artifact_checksums` | `oracle_common_artifact_checksum_required: true` (default) | Dict of artifact file name to `<algorithm>:<digest>`, e.g. `LINUX_binaries.tar.gz: "sha256:<64 hex>"`. Needs one entry for the binaries and one for the patch bundle. |
+| `oracle_common_artifact_checksums` | `oracle_common_artifact_checksum_required: true` (default) | Dict of artifact file name to `<algorithm>:<digest>`, e.g. `LINUX_binaries.tar.gz: "sha256:<64 hex>"`. Needs one entry for the binaries and one for the patch bundle. The digest must be hex (either case) of exactly the algorithm's length (md5 32, sha1 40, sha224 56, sha256 64, sha384 96, sha512 128), or `<algorithm>:<http(s) URL of a checksum file>`. All-zero placeholder digests and `<CHANGE_ME>` are rejected. |
 
 ### oracle_common: accounts, staging and site layout
 
@@ -703,7 +703,7 @@ that already has an Oracle home, to see the refusals, and a clean host, for a fu
 | Environment file differs | Another run wrote `<DB>.env` with other content (for example an older run with `.` in PATH). Check it, then force it or align the settings. |
 | Inventory pointer / group mismatch, or `db_owner` not in the inventory group | The existing `/etc/oraInst.loc` is not rewritten by default. Add `db_owner` to its `inst_group`, or clear the explicit inventory settings, or (only if you mean to move the host to another inventory) set `oracle_database_install_role_force_inventory_pointer: true`. |
 | `Missing prerequisite packages on <host> (N): ...` | Install them (nothing was changed on the host), or set `oracle_ignore_prereqs: true` knowingly. |
-| `no checksum for ...` / checksum mismatch | Add the correct digest to `oracle_common_artifact_checksums`. A mismatch means the file differs from the one you recorded. |
+| `no checksum for ...` / `all-zero placeholder digest` / `must be <algorithm>:<hex digest>` / checksum mismatch | Add the correct digest to `oracle_common_artifact_checksums`. A mismatch means the file differs from the one you recorded. |
 | `Download of <file> failed (HTTP ...)` | Check the repository URL, credentials, CA bundle and proxy settings. The URL and password are redacted in the message. |
 | `root.sh ... did not succeed (wrapper method, rc=N: ...)`: rc 1 invalid wrapper environment, 2 timed out waiting for a prompt, 3 wrapper ended early, 4 unexpected prompt or question, 5 wrapper exited non-zero; or `Output lacks the success pattern` | Check the wrapper's prompts against `files/root_wrapper.exp`. If the wrapper hides root.sh's output, set `oracle_common_root_sh_success_regex: ""`. Or use the `become` method. |
 | `database_install.bash (runInstaller)` / `database_patch.bash (OPatch)` failed | See `install_status.txt` / `opatch_status.txt` / `opatch_jvm_status.txt` in the log directory, and the installer logs in the central inventory's `logs/`. |

@@ -33,5 +33,14 @@ __oracle_common_re_mode_group_writable: '\A0?[0-7][2367][0-7]\Z'
 # group, others or everybody (who contains g, o or a, or is empty, with + or =).
 __oracle_common_re_symbolic_mode: '\A[ugoa]*[-+=][rwxXst]*(,[ugoa]*[-+=][rwxXst]*)*\Z'
 __oracle_common_re_symbolic_mode_unsafe: '\A(?:[ugoa]*[goa][ugoa]*|)[+=][rwxXst]*w'
-# get_url checksum: <algorithm>:<hex digest or URL of a checksum file>.
-__oracle_common_re_checksum: '\A(md5|sha1|sha224|sha256|sha384|sha512):[^\s]+\Z'
+# get_url checksum: <algorithm>:<hex digest of exactly that algorithm's length (either case)>, or
+# <algorithm>:<http(s) URL of a checksum file> (the URL form get_url fetches; ftp and other schemes are refused).
+# Verbose pattern ((?x): the spaces and line breaks of the folded text are ignored, so it can be split).
+__oracle_common_re_checksum: >-
+  (?x)\A(?:
+  md5:[0-9A-Fa-f]{32} | sha1:[0-9A-Fa-f]{40} | sha224:[0-9A-Fa-f]{56} |
+  sha256:[0-9A-Fa-f]{64} | sha384:[0-9A-Fa-f]{96} | sha512:[0-9A-Fa-f]{128} |
+  (?:md5|sha1|sha224|sha256|sha384|sha512):https?://[^\s]+
+  )\Z
+# A digest made only of zeros (any length): a placeholder such as "sha256:000...0", never a real artifact.
+__oracle_common_re_checksum_zero: '\A(?:md5|sha1|sha224|sha256|sha384|sha512):0+\Z'

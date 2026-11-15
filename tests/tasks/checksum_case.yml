@@ -1,0 +1,46 @@
+---
+# One checksum case: run the real security-input validation with the baseline checksums plus the case's
+# extra entries, then compare which entries were rejected, and why (format or placeholder), with the expectation.
+# The values must never appear in the errors (only the artifact names do).
+- name: Run the install role checksum validation ({{ checksum_case.name }})
+  block:
+    # An oracle_common input: set as a fact (it wins over the test vars files); reset after the last case.
+    - name: Set the artifact checksums of this case
+      ansible.builtin.set_fact:
+        oracle_common_artifact_checksums: "{{ checksum_validation_baseline | combine(checksum_case.checksums) }}"
+
+    - name: Validate the inputs
+      ansible.builtin.include_role:
+        name: oracle_database_install_role
+        tasks_from: validate_security_inputs
+  rescue:
+    - name: Keep the validation errors
+      ansible.builtin.set_fact:
+        checksum_validation_errors: "{{ ansible_failed_result.msg | default('') }}"
+
+- name: Check the outcome ({{ checksum_case.name }})
+  ansible.builtin.assert:
+    that:
+      - __checksum_case_format == (checksum_case.format | default([]) | sort)
+      - __checksum_case_placeholder == (checksum_case.placeholder | default([]) | sort)
+      - __checksum_case_errors | length == __checksum_case_format | length + __checksum_case_placeholder | length
+      - checksum_case.checksums.values() | select('in', checksum_validation_errors | default('')) | list | length == 0
+    fail_msg: >-
+      format errors {{ __checksum_case_format }} (expected {{ checksum_case.format | default([]) | sort }});
+      placeholder errors {{ __checksum_case_placeholder }} (expected {{ checksum_case.placeholder | default([]) | sort }});
+      all errors: {{ __checksum_case_errors }}
+    quiet: true
+  vars:
+    __checksum_case_errors: >-
+      {{ checksum_validation_errors | default('')
+         | regex_replace('\AInvalid security inputs: ', '') | split(' | ') | reject('equalto', '') | list }}
+    __checksum_case_format: >-
+      {{ __checksum_case_errors | select('search', '\] must be <algorithm>:<hex digest>')
+         | map('regex_search', '\Aoracle_common_artifact_checksums\[([^\]]+)\]', '\1') | map('first') | sort }}
+    __checksum_case_placeholder: >-
+      {{ __checksum_case_errors | select('search', '\] is an all-zero placeholder digest')
+         | map('regex_search', '\Aoracle_common_artifact_checksums\[([^\]]+)\]', '\1') | map('first') | sort }}
+
+- name: Forget the errors of this case
+  ansible.builtin.set_fact:
+    checksum_validation_errors: ""

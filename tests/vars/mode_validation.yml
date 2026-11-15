@@ -1,6 +1,6 @@
 ---
 # Minimal valid inputs for tests/mode_validation.yml, so that only the mode checks decide the outcome.
-# Placeholders only: example.com and an all-zero digest.
+# Placeholders only: example.com and fake (well-formed, non-zero) digests; an all-zero digest is rejected.
 target: localhost
 # DATABASE_NAME is the existing upper-case input name that AAP job templates pass (kept for compatibility).
 DATABASE_NAME: TESTDB  # noqa: var-naming[pattern]
@@ -16,5 +16,5 @@ oracle_common_patch_file_name: LINUX_jan26.tar.gz
 install_file_name: LINUX_binaries.tar.gz
 patch_file_name: LINUX_jan26.tar.gz
 oracle_common_artifact_checksums:
-  LINUX_binaries.tar.gz: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-  LINUX_jan26.tar.gz: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  LINUX_binaries.tar.gz: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  LINUX_jan26.tar.gz: "sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"

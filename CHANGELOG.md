@@ -208,6 +208,10 @@ in code, and is secure by default. The job inputs used by existing AAP job templ
 - Host key checking is on. TLS certificates of the repository and the webhook are verified, with an
   optional CA bundle.
 - Every downloaded artifact must match a checksum (configurable).
+- Artifact checksums are validated strictly before anything changes on the host: a hex digest (either case)
+  must have exactly its algorithm's length (md5 32 ... sha512 128), a checksum-file URL must be http(s), and
+  an all-zero placeholder digest is rejected as such. The example inventory now ships `<CHANGE_ME>`
+  instead of an all-zero digest, which used to pass validation and fail only at download.
 - Credentials are refused over plain http.
 - Secrets come from Ansible Vault or AAP credentials. Every task that handles them runs with `no_log`,
   and error messages are redacted.
