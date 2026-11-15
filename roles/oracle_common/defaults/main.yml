@@ -98,12 +98,14 @@ oracle_common_artifactory_use_proxy: false
 oracle_common_artifactory_validate_certs: true
 oracle_common_artifactory_ca_path: ""
 # Integrity of the downloads: expected checksum per artifact file name, in get_url's format
-# <algorithm>:<hex digest> (sha256 recommended), e.g.
+# <algorithm>:<hex digest> (sha256 recommended). The digest is hex (either case) of exactly the
+# algorithm's length (md5 32, sha1 40, sha224 56, sha256 64, sha384 96, sha512 128); an all-zero
+# placeholder digest is rejected. E.g.
 #   oracle_common_artifact_checksums:
 #     LINUX_binaries.tar.gz: "sha256:<64 hex characters>"
 #     LINUX_jan26.tar.gz: "sha256:<64 hex characters>"
 # Take the digests from a trusted source (the repository's checksum view or your release record).
-# get_url also accepts <algorithm>:<URL of a checksum file>, which only protects against transfer
+# <algorithm>:<http(s) URL of a checksum file> is also accepted, which only protects against transfer
 # errors, not against a tampered repository.
 oracle_common_artifact_checksums: {}
 # Secure default: every downloaded artifact (binaries and patch bundle) must have a checksum in

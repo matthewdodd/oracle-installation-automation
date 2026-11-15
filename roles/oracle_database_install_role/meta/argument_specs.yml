@@ -200,7 +200,9 @@ argument_specs:
             *.tar.gz, the original). Plain globs without a /. An empty list skips this step.
       oracle_common_artifact_checksums:
         type: dict
-        description: Expected checksum per artifact file name (from oracle_common).
+        description:
+          - Expected checksum per artifact file name (from oracle_common), <algorithm>:<hex digest of exactly the
+            algorithm's length, not all zeros> or <algorithm>:<http(s) URL of a checksum file>.
       oracle_common_artifact_checksum_required:
         type: bool
         description: Require a checksum for every artifact (default true, from oracle_common).
